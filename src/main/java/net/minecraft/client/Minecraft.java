@@ -1101,6 +1101,16 @@ public abstract class Minecraft implements Runnable {
                      if (Keyboard.getEventKey() == 63) {
                         this.options.thirdPersonView = !this.options.thirdPersonView;
                      }
+
+                     // Open inventory with inventory key (E by default)
+                     if (Keyboard.getEventKey() == this.options.keyInventory.key && this.player != null) {
+                        this.setScreen(new net.minecraft.client.gui.inventory.InventoryScreen(this.player));
+                     }
+
+                     // Drop item with drop key (Q by default)
+                     if (Keyboard.getEventKey() == this.options.keyDrop.key && this.player != null) {
+                        this.player.drop();
+                     }
                   }
 
                   for(int var6 = 0; var6 < 9; ++var6) {

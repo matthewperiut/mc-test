@@ -1,14 +1,12 @@
 package net.minecraft.client.title;
 
 import java.io.BufferedReader;
-import java.io.File;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.Random;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gamemode.secret.SecretMode;
 import net.minecraft.client.gui.Button;
 import net.minecraft.client.gui.OptionsScreen;
 import net.minecraft.client.gui.Screen;
@@ -18,7 +16,6 @@ import net.minecraft.client.locale.Language;
 import net.minecraft.client.renderer.Tesselator;
 import net.minecraft.client.renderer.TileRenderer;
 import net.minecraft.client.skins.TexturePackSelectScreen;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.level.tile.Tile;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.util.glu.GLU;
@@ -93,12 +90,6 @@ public class TitleScreen extends Screen {
       if (this.minecraft.user == null) {
          ((Button)this.buttons.get(1)).active = false;
       }
-
-      this.minecraft.gameMode = new SecretMode(this.minecraft);
-      Level.deleteLevel(Minecraft.getWorkingDirectory(), "secretLevel");
-      Level var5 = new Level(new File(Minecraft.getWorkingDirectory(), "saves"), "secretLevel", 4656295L);
-      this.minecraft.setLevel(var5);
-      this.minecraft.setScreen((Screen)null);
    }
 
    protected void buttonClicked(Button var1) {

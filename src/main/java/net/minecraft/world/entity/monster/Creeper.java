@@ -18,7 +18,7 @@ public class Creeper extends Monster {
 
    protected void defineSynchedData() {
       super.defineSynchedData();
-      this.entityData.define(16, -1);
+      this.entityData.define(16, (byte)-1);
    }
 
    public void addAdditonalSaveData(CompoundTag var1) {

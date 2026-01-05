@@ -4,7 +4,8 @@ build/
 !gradle/wrapper/gradle-wrapper.jar
 
 # IntelliJ
-.idea/
+.idea/*
+!.idea/runConfigurations/
 *.iml
 out/
 

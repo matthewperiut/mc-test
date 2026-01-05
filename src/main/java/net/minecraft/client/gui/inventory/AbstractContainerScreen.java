@@ -156,6 +156,11 @@ public abstract class AbstractContainerScreen extends Screen {
    }
 
    protected void keyPressed(char var1, int var2) {
+      // ESC or inventory key closes the screen
+      if (var2 == 1 || var2 == this.minecraft.options.keyInventory.key) {
+         this.minecraft.setScreen((Screen)null);
+         this.minecraft.grabMouse();
+      }
    }
 
    public void removed() {

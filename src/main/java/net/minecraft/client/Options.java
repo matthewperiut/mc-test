@@ -28,6 +28,8 @@ public class Options {
    public KeyMapping keyJump = new KeyMapping("key.jump", 57);
    public KeyMapping keyFog = new KeyMapping("key.fog", 33);
    public KeyMapping keySneak = new KeyMapping("key.sneak", 42);
+   public KeyMapping keyInventory = new KeyMapping("key.inventory", 18);
+   public KeyMapping keyDrop = new KeyMapping("key.drop", 16);
    public KeyMapping[] keyMappings;
    protected Minecraft minecraft;
    private File optionsFile;
@@ -36,7 +38,7 @@ public class Options {
    public String lastMpIp;
 
    public Options(Minecraft var1, File var2) {
-      this.keyMappings = new KeyMapping[]{this.keyUp, this.keyLeft, this.keyDown, this.keyRight, this.keyJump, this.keySneak, this.keyFog};
+      this.keyMappings = new KeyMapping[]{this.keyUp, this.keyLeft, this.keyDown, this.keyRight, this.keyJump, this.keySneak, this.keyFog, this.keyInventory, this.keyDrop};
       this.difficulty = 2;
       this.thirdPersonView = false;
       this.lastMpIp = "";
@@ -46,7 +48,7 @@ public class Options {
    }
 
    public Options() {
-      this.keyMappings = new KeyMapping[]{this.keyUp, this.keyLeft, this.keyDown, this.keyRight, this.keyJump, this.keySneak, this.keyFog};
+      this.keyMappings = new KeyMapping[]{this.keyUp, this.keyLeft, this.keyDown, this.keyRight, this.keyJump, this.keySneak, this.keyFog, this.keyInventory, this.keyDrop};
       this.difficulty = 2;
       this.thirdPersonView = false;
       this.lastMpIp = "";

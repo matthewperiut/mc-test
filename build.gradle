@@ -1,6 +1,7 @@
 plugins {
     id 'java'
     id 'application'
+    id 'idea'
 }
 
 group = 'net.minecraft'
@@ -20,6 +21,7 @@ repositories {
 
 def lwjglVersion = '2.9.4-nightly-20150209'
 def lwjglNatives = 'natives-linux'
+def nativesDir = file("${buildDir}/natives").absolutePath
 
 dependencies {
     // LWJGL 2
@@ -40,20 +42,16 @@ dependencies {
 
 application {
     mainClass = 'net.minecraft.client.Minecraft'
-}
-
-tasks.named('run') {
-    dependsOn extractNatives
-    workingDir = file('run')
-    doFirst {
-        workingDir.mkdirs()
-        def nativesDir = file("${buildDir}/natives").absolutePath
-        jvmArgs = [
-            "-Djava.library.path=${nativesDir}",
-            "-Dorg.lwjgl.librarypath=${nativesDir}",
-            "-Dnet.java.games.input.librarypath=${nativesDir}"
-        ]
-    }
+    applicationDefaultJvmArgs = [
+        "-Djava.library.path=${nativesDir}",
+        "-Dorg.lwjgl.librarypath=${nativesDir}",
+        "-Dnet.java.games.input.librarypath=${nativesDir}",
+        // Java 21 compatibility for LWJGL2
+        "-Dorg.lwjgl.opengl.Display.allowSoftwareOpenGL=true",
+        "--add-opens=java.base/java.lang=ALL-UNNAMED",
+        "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
+        "--add-opens=java.desktop/java.awt=ALL-UNNAMED"
+    ]
 }
 
 tasks.register('extractNatives', Copy) {
@@ -65,6 +63,55 @@ tasks.register('extractNatives', Copy) {
     into "${buildDir}/natives"
 }
 
+tasks.named('run') {
+    dependsOn extractNatives
+    workingDir = file('run')
+    doFirst {
+        workingDir.mkdirs()
+    }
+}
+
+// Configure IntelliJ IDEA
+idea {
+    module {
+        inheritOutputDirs = true
+        downloadJavadoc = true
+        downloadSources = true
+    }
+}
+
+// Generate IntelliJ run configuration
+tasks.register('generateIntellijRun') {
+    dependsOn extractNatives
+    group = 'ide'
+    description = 'Generates IntelliJ IDEA run configuration'
+
+    doLast {
+        def runConfigDir = file('.idea/runConfigurations')
+        runConfigDir.mkdirs()
+
+        file("${runConfigDir}/Minecraft_Client.xml").text = """<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Minecraft Client" type="Application" factoryName="Application">
+    <option name="MAIN_CLASS_NAME" value="net.minecraft.client.Minecraft" />
+    <module name="${project.name}.main" />
+    <option name="PROGRAM_PARAMETERS" value="Dev -" />
+    <option name="VM_PARAMETERS" value="-Djava.library.path=${nativesDir} -Dorg.lwjgl.librarypath=${nativesDir} -Dnet.java.games.input.librarypath=${nativesDir}" />
+    <option name="WORKING_DIRECTORY" value="\$ProjectFileDir\$/run" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>"""
+
+        println "IntelliJ run configuration generated at ${runConfigDir}/Minecraft_Client.xml"
+        println "Reload the project in IntelliJ to see the run configuration"
+    }
+}
+
+// Auto-extract natives on build
+tasks.named('classes') {
+    dependsOn extractNatives
+}
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
