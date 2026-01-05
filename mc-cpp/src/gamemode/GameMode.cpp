@@ -1,0 +1,260 @@
+#include "gamemode/GameMode.hpp"
+#include "core/Minecraft.hpp"
+#include "world/Level.hpp"
+#include "world/tile/Tile.hpp"
+#include "entity/Player.hpp"
+#include "entity/LocalPlayer.hpp"
+#include "gui/Gui.hpp"
+#include "renderer/LevelRenderer.hpp"
+#include "audio/SoundEngine.hpp"
+
+namespace mc {
+
+// =============================================================================
+// GameMode (Base class)
+// =============================================================================
+
+GameMode::GameMode(Minecraft* minecraft)
+    : minecraft(minecraft)
+    , instaBuild(false)
+    , xDestroyBlock(-1)
+    , yDestroyBlock(-1)
+    , zDestroyBlock(-1)
+    , destroyProgress(0.0f)
+    , oDestroyProgress(0.0f)
+    , destroyTicks(0.0f)
+    , destroyDelay(0)
+{
+}
+
+void GameMode::initLevel(Level* /*level*/) {
+}
+
+void GameMode::initPlayer(Player* /*player*/) {
+}
+
+void GameMode::startDestroyBlock(int x, int y, int z, int face) {
+    // Base implementation - instant destroy
+    destroyBlock(x, y, z, face);
+}
+
+void GameMode::continueDestroyBlock(int /*x*/, int /*y*/, int /*z*/, int /*face*/) {
+    // Base implementation does nothing
+}
+
+void GameMode::stopDestroyBlock() {
+    destroyProgress = 0.0f;
+    destroyDelay = 0;
+}
+
+bool GameMode::destroyBlock(int x, int y, int z, int /*face*/) {
+    if (!minecraft->level) return false;
+
+    Level* level = minecraft->level.get();
+    int tileId = level->getTile(x, y, z);
+    if (tileId <= 0) return false;
+
+    Tile* tile = Tile::tiles[tileId];
+
+    // Set to air
+    bool changed = level->setTile(x, y, z, 0);
+
+    if (tile && changed) {
+        // Play break sound
+        // SoundEngine::getInstance().play(tile->soundType.getBreakSound(), ...);
+
+        // Tile destroy callback
+        tile->destroy(level, x, y, z, 0);
+    }
+
+    return changed;
+}
+
+void GameMode::tick() {
+}
+
+void GameMode::render(float /*partialTick*/) {
+}
+
+float GameMode::getPickRange() const {
+    return 5.0f;
+}
+
+bool GameMode::canHurtPlayer() const {
+    return true;
+}
+
+// =============================================================================
+// SurvivalMode - Time-based block breaking matching Java exactly
+// =============================================================================
+
+SurvivalMode::SurvivalMode(Minecraft* minecraft)
+    : GameMode(minecraft)
+{
+}
+
+void SurvivalMode::initPlayer(Player* player) {
+    player->yRot = -180.0f;
+}
+
+void SurvivalMode::startDestroyBlock(int x, int y, int z, int face) {
+    if (!minecraft->level) return;
+
+    int tileId = minecraft->level->getTile(x, y, z);
+    if (tileId <= 0) return;
+
+    Tile* tile = Tile::tiles[tileId];
+    if (!tile) return;
+
+    // Attack tile (e.g., note block plays sound)
+    if (destroyProgress == 0.0f) {
+        tile->attack(minecraft->level.get(), x, y, z, minecraft->player);
+    }
+
+    // Initialize target block coordinates
+    xDestroyBlock = x;
+    yDestroyBlock = y;
+    zDestroyBlock = z;
+    destroyProgress = 0.0f;
+    destroyTicks = 0.0f;
+
+    // Check for instant break (like flowers, torches)
+    // Java: if (t > 0 && Tile.tiles[t].getDestroyProgress(this.minecraft.player) >= 1.0F)
+    float breakSpeed = tile->getDestroyProgress(minecraft->player);
+    if (breakSpeed >= 1.0f) {
+        destroyBlock(x, y, z, face);
+        destroyDelay = 5;
+    }
+}
+
+void SurvivalMode::continueDestroyBlock(int x, int y, int z, int face) {
+    // Match Java SurvivalMode.continueDestroyBlock() exactly
+
+    // Delay after breaking a block (Java: this.destroyDelay = 5)
+    if (destroyDelay > 0) {
+        destroyDelay--;
+        return;
+    }
+
+    if (x == xDestroyBlock && y == yDestroyBlock && z == zDestroyBlock) {
+        // Same block - continue breaking
+        if (!minecraft->level) return;
+
+        int tileId = minecraft->level->getTile(x, y, z);
+        if (tileId <= 0) return;
+
+        Tile* tile = Tile::tiles[tileId];
+        if (!tile) return;
+
+        // Progress break (Java: this.destroyProgress += tile.getDestroyProgress(this.minecraft.player))
+        destroyProgress += tile->getDestroyProgress(minecraft->player);
+
+        // Play dig sound every 4 ticks
+        // Java: if (this.destroyTicks % 4.0F == 0.0F)
+        if (static_cast<int>(destroyTicks) % 4 == 0) {
+            // Play step sound at reduced volume
+            // SoundEngine::getInstance().play(tile->soundType.getStepSound(), ...);
+        }
+
+        destroyTicks++;
+
+        // Check if block broken
+        // Java: if (this.destroyProgress >= 1.0F)
+        if (destroyProgress >= 1.0f) {
+            destroyBlock(x, y, z, face);
+            destroyProgress = 0.0f;
+            oDestroyProgress = 0.0f;
+            destroyTicks = 0.0f;
+            destroyDelay = 5;  // Java: this.destroyDelay = 5
+        }
+    } else {
+        // Different block - reset progress
+        destroyProgress = 0.0f;
+        oDestroyProgress = 0.0f;
+        destroyTicks = 0.0f;
+        xDestroyBlock = x;
+        yDestroyBlock = y;
+        zDestroyBlock = z;
+    }
+}
+
+void SurvivalMode::stopDestroyBlock() {
+    destroyProgress = 0.0f;
+    destroyDelay = 0;
+}
+
+bool SurvivalMode::destroyBlock(int x, int y, int z, int face) {
+    if (!minecraft->level) return false;
+
+    Level* level = minecraft->level.get();
+    int tileId = level->getTile(x, y, z);
+    if (tileId <= 0) return false;
+
+    Tile* tile = Tile::tiles[tileId];
+    int data = level->getData(x, y, z);
+
+    // Call parent destroy
+    bool changed = GameMode::destroyBlock(x, y, z, face);
+
+    // Handle tool durability and drops (simplified)
+    if (minecraft->player && tile && changed) {
+        // Java: if (changed && couldDestroy) Tile.tiles[t].playerDestroy(...)
+        tile->playerDestroy(level, x, y, z, data);
+    }
+
+    return changed;
+}
+
+void SurvivalMode::tick() {
+    // Store previous progress for interpolation
+    oDestroyProgress = destroyProgress;
+}
+
+void SurvivalMode::render(float partialTick) {
+    // Update GUI and LevelRenderer with break progress
+    // Java: this.minecraft.gui.progress = dp; this.minecraft.levelRenderer.destroyProgress = dp;
+
+    if (destroyProgress <= 0.0f) {
+        if (minecraft->gui) minecraft->gui->progress = 0.0f;
+        if (minecraft->levelRenderer) minecraft->levelRenderer->destroyProgress = 0.0f;
+    } else {
+        // Interpolate for smooth animation
+        float dp = oDestroyProgress + (destroyProgress - oDestroyProgress) * partialTick;
+        if (minecraft->gui) minecraft->gui->progress = dp;
+        if (minecraft->levelRenderer) minecraft->levelRenderer->destroyProgress = dp;
+    }
+}
+
+float SurvivalMode::getPickRange() const {
+    return 4.0f;  // Survival reach is 4 blocks
+}
+
+// =============================================================================
+// CreativeMode - Instant breaking
+// =============================================================================
+
+CreativeMode::CreativeMode(Minecraft* minecraft)
+    : GameMode(minecraft)
+{
+    instaBuild = true;
+}
+
+void CreativeMode::initPlayer(Player* player) {
+    player->flying = true;
+    player->creative = true;
+}
+
+void CreativeMode::startDestroyBlock(int x, int y, int z, int face) {
+    // Creative mode has instant breaking
+    destroyBlock(x, y, z, face);
+}
+
+float CreativeMode::getPickRange() const {
+    return 5.0f;  // Creative reach is 5 blocks
+}
+
+bool CreativeMode::canHurtPlayer() const {
+    return false;  // Creative mode doesn't take damage
+}
+
+} // namespace mc

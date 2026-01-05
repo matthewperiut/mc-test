@@ -17,6 +17,7 @@ class GameRenderer;
 class Gui;
 class Screen;
 class SoundEngine;
+class GameMode;
 
 class Minecraft {
 public:
@@ -27,6 +28,8 @@ public:
     GLFWwindow* window;
     int screenWidth;
     int screenHeight;
+    int framebufferWidth;   // Actual pixel dimensions (for HiDPI)
+    int framebufferHeight;
     bool fullscreen;
 
     // Game state
@@ -40,6 +43,7 @@ public:
     std::unique_ptr<LevelRenderer> levelRenderer;
     std::unique_ptr<GameRenderer> gameRenderer;
     std::unique_ptr<Gui> gui;
+    std::unique_ptr<GameMode> gameMode;
     Screen* currentScreen;
 
     // Input

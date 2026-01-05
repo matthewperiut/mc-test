@@ -34,6 +34,13 @@ public:
     int chunksRendered;
     int chunksUpdated;
 
+    // First rebuild flag - rebuild more chunks initially
+    bool firstRebuild;
+
+    // Block breaking progress (0.0 - 1.0)
+    float destroyProgress;
+    int destroyX, destroyY, destroyZ;
+
     LevelRenderer(Minecraft* minecraft, Level* level);
     ~LevelRenderer();
 

@@ -13,6 +13,9 @@ LevelRenderer::LevelRenderer(Minecraft* minecraft, Level* level)
     , renderDistance(8)
     , chunksRendered(0)
     , chunksUpdated(0)
+    , firstRebuild(true)
+    , destroyProgress(0.0f)
+    , destroyX(-1), destroyY(-1), destroyZ(-1)
 {
     setLevel(level);
 }
@@ -168,13 +171,18 @@ void LevelRenderer::sortChunks() {
 void LevelRenderer::updateDirtyChunks() {
     chunksUpdated = 0;
 
-    // Rebuild a limited number of chunks per frame
-    const int MAX_UPDATES = 8;
+    // Rebuild more chunks on initial load, fewer during gameplay
+    int maxUpdates = firstRebuild ? 256 : 8;
 
-    for (int i = 0; i < std::min(static_cast<int>(dirtyChunks.size()), MAX_UPDATES); i++) {
+    int toUpdate = std::min(static_cast<int>(dirtyChunks.size()), maxUpdates);
+    for (int i = 0; i < toUpdate; i++) {
         Chunk* chunk = dirtyChunks[i];
         chunk->rebuild(tileRenderer);
         chunksUpdated++;
+    }
+
+    if (firstRebuild && dirtyChunks.size() <= static_cast<size_t>(maxUpdates)) {
+        firstRebuild = false;
     }
 }
 

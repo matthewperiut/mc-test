@@ -3,6 +3,7 @@
 #include "renderer/Tesselator.hpp"
 #include "world/Level.hpp"
 #include "world/tile/Tile.hpp"
+#include <GL/glew.h>
 
 namespace mc {
 
@@ -51,6 +52,8 @@ void Chunk::calculateDistance(double camX, double camY, double camZ) {
 }
 
 void Chunk::rebuild(TileRenderer& renderer) {
+    if (!level) return;
+
     rebuildSolid(renderer);
     rebuildWater(renderer);
     dirty = false;
@@ -69,6 +72,7 @@ void Chunk::rebuildSolid(TileRenderer& renderer) {
     t.begin(GL_QUADS);
 
     solidVertexCount = 0;
+    bool hasContent = false;
 
     for (int x = x0; x < x1; x++) {
         for (int y = y0; y < y1; y++) {
@@ -83,6 +87,7 @@ void Chunk::rebuildSolid(TileRenderer& renderer) {
                 if (tile->renderShape == TileShape::LIQUID) continue;
 
                 renderer.renderTile(tile, x, y, z);
+                hasContent = true;
             }
         }
     }
@@ -91,6 +96,10 @@ void Chunk::rebuildSolid(TileRenderer& renderer) {
     t.end();
 
     glEndList();
+
+    if (!hasContent) {
+        solidVertexCount = 0;
+    }
 }
 
 void Chunk::rebuildWater(TileRenderer& renderer) {
@@ -105,6 +114,7 @@ void Chunk::rebuildWater(TileRenderer& renderer) {
     t.begin(GL_QUADS);
 
     waterVertexCount = 0;
+    bool hasContent = false;
 
     for (int x = x0; x < x1; x++) {
         for (int y = y0; y < y1; y++) {
@@ -119,6 +129,7 @@ void Chunk::rebuildWater(TileRenderer& renderer) {
                 if (tile->renderShape != TileShape::LIQUID) continue;
 
                 renderer.renderTile(tile, x, y, z);
+                hasContent = true;
             }
         }
     }
@@ -127,6 +138,10 @@ void Chunk::rebuildWater(TileRenderer& renderer) {
     t.end();
 
     glEndList();
+
+    if (!hasContent) {
+        waterVertexCount = 0;
+    }
 }
 
 void Chunk::render(int pass) {

@@ -1,8 +1,17 @@
 #include "renderer/Tesselator.hpp"
 #include <cstring>
 #include <stdexcept>
+#include <iostream>
+#include <bit>
 
 namespace mc {
+
+// Helper to bit-cast float to int (like Java's Float.floatToRawIntBits)
+static inline int floatToRawIntBits(float f) {
+    int i;
+    std::memcpy(&i, &f, sizeof(float));
+    return i;
+}
 
 Tesselator& Tesselator::getInstance() {
     static Tesselator instance;
@@ -10,16 +19,22 @@ Tesselator& Tesselator::getInstance() {
 }
 
 Tesselator::Tesselator()
-    : vao(0), vbo(0), initialized(false)
-    , bufferPos(0), vertexCount(0)
-    , currentU(0), currentV(0)
-    , currentR(1), currentG(1), currentB(1), currentA(1)
-    , currentNX(0), currentNY(1), currentNZ(0)
-    , offsetX(0), offsetY(0), offsetZ(0)
-    , hasColor(true), hasTexture(true), hasNormal(false)
-    , drawing(false), drawMode(GL_QUADS)
+    : p(0)
+    , vertices(0)
+    , count(0)
+    , u(0), v(0)
+    , col(0xFFFFFFFF)
+    , normalValue(0)
+    , xo(0), yo(0), zo(0)
+    , hasColor(false)
+    , hasTexture(false)
+    , hasNormal(false)
+    , noColorFlag(false)
+    , tesselating(false)
+    , mode(GL_QUADS)
 {
-    buffer.resize(INITIAL_BUFFER_SIZE);
+    // Pre-allocate array (2097152 ints like Java)
+    array.resize(2097152);
 }
 
 Tesselator::~Tesselator() {
@@ -27,221 +42,194 @@ Tesselator::~Tesselator() {
 }
 
 void Tesselator::init() {
-    if (initialized) return;
-
-    glGenVertexArrays(1, &vao);
-    glGenBuffers(1, &vbo);
-
-    glBindVertexArray(vao);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-
-    // Allocate initial buffer
-    glBufferData(GL_ARRAY_BUFFER, INITIAL_BUFFER_SIZE, nullptr, GL_DYNAMIC_DRAW);
-
-    // Set up vertex attributes
-    // Position (location 0): 3 floats at offset 0
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, VERTEX_SIZE, (void*)0);
-    glEnableVertexAttribArray(0);
-
-    // Texture coords (location 1): 2 floats at offset 12
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, VERTEX_SIZE, (void*)12);
-    glEnableVertexAttribArray(1);
-
-    // Color (location 2): 4 unsigned bytes at offset 20, normalized
-    glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, VERTEX_SIZE, (void*)20);
-    glEnableVertexAttribArray(2);
-
-    // Normal (location 3): 3 signed bytes at offset 24, normalized
-    glVertexAttribPointer(3, 3, GL_BYTE, GL_TRUE, VERTEX_SIZE, (void*)24);
-    glEnableVertexAttribArray(3);
-
-    glBindVertexArray(0);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-    initialized = true;
+    // Nothing needed for client-side arrays
 }
 
 void Tesselator::destroy() {
-    if (!initialized) return;
-
-    if (vbo) {
-        glDeleteBuffers(1, &vbo);
-        vbo = 0;
-    }
-    if (vao) {
-        glDeleteVertexArrays(1, &vao);
-        vao = 0;
-    }
-
-    initialized = false;
+    array.clear();
 }
 
-void Tesselator::begin(GLenum mode) {
-    if (drawing) {
-        throw std::runtime_error("Tesselator.begin called while already drawing");
+void Tesselator::begin(GLenum drawMode) {
+    if (tesselating) {
+        throw std::runtime_error("Already tesselating!");
     }
-
-    drawing = true;
-    drawMode = mode;
-    bufferPos = 0;
-    vertexCount = 0;
-
-    // Reset state
-    hasColor = true;
-    hasTexture = true;
+    tesselating = true;
+    clear();
+    mode = drawMode;
     hasNormal = false;
+    hasColor = false;
+    hasTexture = false;
+    noColorFlag = false;
 }
 
 void Tesselator::end() {
-    if (!drawing) {
-        throw std::runtime_error("Tesselator.end called without begin");
+    if (!tesselating) {
+        throw std::runtime_error("Not tesselating!");
+    }
+    tesselating = false;
+
+    if (vertices > 0) {
+        draw();
     }
 
-    draw();
-    drawing = false;
+    clear();
 }
 
 void Tesselator::draw() {
-    if (vertexCount == 0) return;
+    if (vertices == 0) return;
 
-    glBindVertexArray(vao);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-
-    // Upload vertex data
-    glBufferSubData(GL_ARRAY_BUFFER, 0, bufferPos, buffer.data());
-
-    // Convert GL_QUADS to GL_TRIANGLES if needed (GL_QUADS deprecated in modern OpenGL)
-    if (drawMode == GL_QUADS) {
-        // For compatibility, we'll draw as quads using legacy compatibility profile
-        // In a pure core profile, you'd need to convert to triangles
-        glDrawArrays(GL_QUADS, 0, vertexCount);
-    } else {
-        glDrawArrays(drawMode, 0, vertexCount);
+    // Set up texture coordinate pointer if we have texture coords
+    if (hasTexture) {
+        // Texture coords are at byte offset 12 (after 3 floats for position)
+        glTexCoordPointer(2, GL_FLOAT, 32, reinterpret_cast<const float*>(array.data()) + 3);
+        glEnableClientState(GL_TEXTURE_COORD_ARRAY);
     }
 
-    glBindVertexArray(0);
+    // Set up color pointer if we have colors
+    if (hasColor) {
+        // Color is at byte offset 20
+        glColorPointer(4, GL_UNSIGNED_BYTE, 32, reinterpret_cast<const uint8_t*>(array.data()) + 20);
+        glEnableClientState(GL_COLOR_ARRAY);
+    }
 
-    // Reset for next batch
-    bufferPos = 0;
-    vertexCount = 0;
-}
+    // Set up normal pointer if we have normals
+    if (hasNormal) {
+        // Normal is at byte offset 24
+        glNormalPointer(GL_BYTE, 32, reinterpret_cast<const int8_t*>(array.data()) + 24);
+        glEnableClientState(GL_NORMAL_ARRAY);
+    }
 
-void Tesselator::ensureCapacity(size_t additionalBytes) {
-    if (bufferPos + additionalBytes > buffer.size()) {
-        buffer.resize(buffer.size() * 2);
+    // Set up vertex pointer (position at byte offset 0)
+    glVertexPointer(3, GL_FLOAT, 32, array.data());
+    glEnableClientState(GL_VERTEX_ARRAY);
+
+    // Draw!
+    glDrawArrays(mode, 0, vertices);
+
+    // Disable client states
+    glDisableClientState(GL_VERTEX_ARRAY);
+    if (hasTexture) {
+        glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+    }
+    if (hasColor) {
+        glDisableClientState(GL_COLOR_ARRAY);
+    }
+    if (hasNormal) {
+        glDisableClientState(GL_NORMAL_ARRAY);
     }
 }
 
-void Tesselator::vertex(float x, float y, float z) {
-    ensureCapacity(VERTEX_SIZE);
-
-    uint8_t* ptr = buffer.data() + bufferPos;
-
-    // Position
-    float* fptr = reinterpret_cast<float*>(ptr);
-    fptr[0] = x + offsetX;
-    fptr[1] = y + offsetY;
-    fptr[2] = z + offsetZ;
-
-    // Texture coords
-    fptr[3] = currentU;
-    fptr[4] = currentV;
-
-    // Color (RGBA packed)
-    ptr[20] = static_cast<uint8_t>(currentR * 255.0f);
-    ptr[21] = static_cast<uint8_t>(currentG * 255.0f);
-    ptr[22] = static_cast<uint8_t>(currentB * 255.0f);
-    ptr[23] = static_cast<uint8_t>(currentA * 255.0f);
-
-    // Normal (3 signed bytes)
-    ptr[24] = static_cast<int8_t>(currentNX * 127.0f);
-    ptr[25] = static_cast<int8_t>(currentNY * 127.0f);
-    ptr[26] = static_cast<int8_t>(currentNZ * 127.0f);
-    ptr[27] = 0;  // Padding
-
-    // More padding for alignment
-    ptr[28] = 0;
-    ptr[29] = 0;
-    ptr[30] = 0;
-    ptr[31] = 0;
-
-    bufferPos += VERTEX_SIZE;
-    vertexCount++;
+void Tesselator::clear() {
+    vertices = 0;
+    p = 0;
+    count = 0;
 }
 
-void Tesselator::vertexUV(float x, float y, float z, float u, float v) {
-    tex(u, v);
-    vertex(x, y, z);
+void Tesselator::tex(double u_, double v_) {
+    hasTexture = true;
+    u = u_;
+    v = v_;
 }
 
 void Tesselator::color(float r, float g, float b) {
-    currentR = r;
-    currentG = g;
-    currentB = b;
-    currentA = 1.0f;
+    color(static_cast<int>(r * 255.0f), static_cast<int>(g * 255.0f), static_cast<int>(b * 255.0f));
 }
 
 void Tesselator::color(float r, float g, float b, float a) {
-    currentR = r;
-    currentG = g;
-    currentB = b;
-    currentA = a;
+    color(static_cast<int>(r * 255.0f), static_cast<int>(g * 255.0f), static_cast<int>(b * 255.0f), static_cast<int>(a * 255.0f));
+}
+
+void Tesselator::color(int r, int g, int b) {
+    color(r, g, b, 255);
+}
+
+void Tesselator::color(int r, int g, int b, int a) {
+    if (noColorFlag) return;
+
+    // Clamp values
+    if (r > 255) r = 255;
+    if (g > 255) g = 255;
+    if (b > 255) b = 255;
+    if (a > 255) a = 255;
+    if (r < 0) r = 0;
+    if (g < 0) g = 0;
+    if (b < 0) b = 0;
+    if (a < 0) a = 0;
+
+    hasColor = true;
+
+    // Pack color as ABGR for little-endian systems (OpenGL expects RGBA in memory)
+    // On little-endian: store as ABGR so it reads as RGBA
+    col = (a << 24) | (b << 16) | (g << 8) | r;
 }
 
 void Tesselator::color(int rgba) {
-    currentA = static_cast<float>((rgba >> 24) & 0xFF) / 255.0f;
-    currentR = static_cast<float>((rgba >> 16) & 0xFF) / 255.0f;
-    currentG = static_cast<float>((rgba >> 8) & 0xFF) / 255.0f;
-    currentB = static_cast<float>(rgba & 0xFF) / 255.0f;
+    int r = (rgba >> 16) & 255;
+    int g = (rgba >> 8) & 255;
+    int b = rgba & 255;
+    color(r, g, b);
 }
 
-void Tesselator::tex(float u, float v) {
-    currentU = u;
-    currentV = v;
+void Tesselator::setColorOpaque_F(float r, float g, float b) {
+    color(static_cast<int>(r * 255.0f), static_cast<int>(g * 255.0f), static_cast<int>(b * 255.0f));
+}
+
+void Tesselator::vertexUV(double x, double y, double z, double u_, double v_) {
+    tex(u_, v_);
+    vertex(x, y, z);
+}
+
+void Tesselator::vertex(double x, double y, double z) {
+    count++;
+
+    // Store texture coords
+    if (hasTexture) {
+        array[p + 3] = floatToRawIntBits(static_cast<float>(u));
+        array[p + 4] = floatToRawIntBits(static_cast<float>(v));
+    }
+
+    // Store color
+    if (hasColor) {
+        array[p + 5] = col;
+    }
+
+    // Store normal
+    if (hasNormal) {
+        array[p + 6] = normalValue;
+    }
+
+    // Store position (with offset applied)
+    array[p + 0] = floatToRawIntBits(static_cast<float>(x + xo));
+    array[p + 1] = floatToRawIntBits(static_cast<float>(y + yo));
+    array[p + 2] = floatToRawIntBits(static_cast<float>(z + zo));
+
+    p += 8;  // Move to next vertex (8 ints = 32 bytes)
+    vertices++;
+
+    // Auto-flush if buffer getting full
+    if (vertices % 4 == 0 && p >= static_cast<int>(array.size()) - 32) {
+        end();
+        tesselating = true;
+    }
 }
 
 void Tesselator::normal(float x, float y, float z) {
     hasNormal = true;
-    currentNX = x;
-    currentNY = y;
-    currentNZ = z;
+    int8_t xx = static_cast<int8_t>(x * 128.0f);
+    int8_t yy = static_cast<int8_t>(y * 127.0f);
+    int8_t zz = static_cast<int8_t>(z * 127.0f);
+    // Pack normal as 3 bytes (little-endian order)
+    normalValue = (xx & 0xFF) | ((yy & 0xFF) << 8) | ((zz & 0xFF) << 16);
 }
 
-void Tesselator::offset(float x, float y, float z) {
-    offsetX = x;
-    offsetY = y;
-    offsetZ = z;
+void Tesselator::offset(double x, double y, double z) {
+    xo = x;
+    yo = y;
+    zo = z;
 }
 
 void Tesselator::noColor() {
-    hasColor = false;
-}
-
-void Tesselator::setColorState(bool state) {
-    hasColor = state;
-}
-
-void Tesselator::setNormalState(bool state) {
-    hasNormal = state;
-}
-
-void Tesselator::setTextureState(bool state) {
-    hasTexture = state;
-}
-
-void Tesselator::clear() {
-    bufferPos = 0;
-    vertexCount = 0;
-
-    currentU = currentV = 0;
-    currentR = currentG = currentB = currentA = 1.0f;
-    currentNX = currentNZ = 0;
-    currentNY = 1.0f;
-    offsetX = offsetY = offsetZ = 0;
-
-    hasColor = true;
-    hasTexture = true;
-    hasNormal = false;
+    noColorFlag = true;
 }
 
 } // namespace mc

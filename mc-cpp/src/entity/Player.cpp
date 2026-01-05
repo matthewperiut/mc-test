@@ -55,13 +55,15 @@ void Player::tick() {
 }
 
 void Player::updateMovement() {
-    float speed = getMovementSpeed();
+    // Match Java Mob.travel() physics exactly
 
-    // Apply friction and movement
     if (flying) {
-        // Flying movement
+        // Flying movement (creative mode style)
         float flyFriction = 0.91f;
-        moveRelative(moveStrafe, moveForward, flySpeed * speed);
+        float speed = flySpeed;
+        if (running) speed *= 2.0f;
+
+        moveRelative(moveStrafe, moveForward, speed);
 
         xd *= flyFriction;
         yd *= flyFriction;
@@ -74,32 +76,45 @@ void Player::updateMovement() {
             yd -= 0.15;
         }
     } else {
-        // Ground/air movement
+        // Normal ground/air movement - matching Java Mob.travel() exactly
         float friction = 0.91f;
-        float groundFriction = 0.546f;  // 0.6 * 0.91
 
         if (onGround) {
-            groundFriction = 0.546f;  // Could vary by block
-            moveRelative(moveStrafe, moveForward, walkSpeed * speed);
+            // Ground friction: tile.friction * 0.91 (default tile friction = 0.6)
+            friction = 0.54600006f;  // 0.6f * 0.91f
+
+            // Movement speed on ground: 0.1 * (0.16277136 / friction^3)
+            float frictionCubed = friction * friction * friction;
+            float movementFactor = 0.16277136f / frictionCubed;
+            moveRelative(moveStrafe, moveForward, 0.1f * movementFactor);
         } else {
-            moveRelative(moveStrafe, moveForward, 0.02f);  // Air control
+            // Air movement speed is fixed at 0.02
+            moveRelative(moveStrafe, moveForward, 0.02f);
         }
 
-        // Gravity
+        // Recalculate friction for after move (Java does this twice)
+        friction = 0.91f;
+        if (onGround) {
+            friction = 0.54600006f;
+        }
+
+        // Move FIRST with current velocity (Java: this.move(this.xd, this.yd, this.zd))
+        move(xd, yd, zd);
+
+        // Gravity applied AFTER move (Java: this.yd -= 0.08)
         yd -= 0.08;
 
-        // Friction
+        // Vertical drag (Java: this.yd *= 0.98F)
+        yd *= 0.98;
+
+        // Horizontal friction (Java: this.xd *= friction, this.zd *= friction)
         xd *= friction;
-        yd *= 0.98;  // Air resistance
         zd *= friction;
 
-        if (onGround) {
-            xd *= groundFriction / 0.91f;
-            zd *= groundFriction / 0.91f;
-        }
+        return;
     }
 
-    // Apply movement
+    // Apply movement for flying mode
     move(xd, yd, zd);
 }
 
@@ -122,15 +137,10 @@ void Player::travel(float strafe, float forward) {
 }
 
 void Player::jump() {
+    // Java Mob.jumpFromGround(): this.yd = 0.42F
+    // Note: Sprint jumping wasn't added until Beta 1.8
     if (onGround && !flying) {
-        yd = 0.42;  // Jump velocity
-
-        if (running) {
-            // Jump boost when running
-            float yawRad = yRot * Mth::DEG_TO_RAD;
-            xd -= Mth::sin(yawRad) * 0.2f;
-            zd += Mth::cos(yawRad) * 0.2f;
-        }
+        yd = 0.42;
     }
 }
 

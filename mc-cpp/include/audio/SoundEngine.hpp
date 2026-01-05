@@ -3,8 +3,14 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <AL/al.h>
-#include <AL/alc.h>
+
+#ifdef __APPLE__
+    #include <OpenAL/al.h>
+    #include <OpenAL/alc.h>
+#else
+    #include <AL/al.h>
+    #include <AL/alc.h>
+#endif
 
 namespace mc {
 

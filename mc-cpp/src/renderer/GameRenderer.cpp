@@ -179,11 +179,21 @@ void GameRenderer::renderWorld(float partialTick) {
     // Bind terrain texture
     Textures::getInstance().bind("resources/terrain.png");
 
-    // Enable required states
+    // Enable required states for legacy fixed-function pipeline
     glEnable(GL_TEXTURE_2D);
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
+
+    // Disable lighting - we use vertex colors directly
+    glDisable(GL_LIGHTING);
+
+    // Enable alpha test for transparent textures
+    glEnable(GL_ALPHA_TEST);
+    glAlphaFunc(GL_GREATER, 0.5f);
+
+    // Set default color to white (vertex colors will override)
+    glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 
     // Render sky
     levelRenderer->renderSky(partialTick);
@@ -197,6 +207,7 @@ void GameRenderer::renderWorld(float partialTick) {
     }
 
     // Render transparent geometry (water)
+    glDisable(GL_ALPHA_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     levelRenderer->render(partialTick, 1);

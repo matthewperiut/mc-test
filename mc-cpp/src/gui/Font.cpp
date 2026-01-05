@@ -40,7 +40,7 @@ void Font::loadCharWidths() {
 void Font::init() {
     if (initialized) return;
 
-    fontTexture = Textures::getInstance().loadTexture("resources/default.png");
+    fontTexture = Textures::getInstance().loadTexture("resources/font/default.png");
     initialized = true;
 }
 

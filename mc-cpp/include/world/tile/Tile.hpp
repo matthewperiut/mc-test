@@ -123,6 +123,7 @@ public:
     bool solid;
     float hardness;
     float resistance;
+    float friction;  // For player movement (default 0.6)
     std::string name;
 
     // Sound properties
@@ -162,6 +163,12 @@ public:
     virtual void onRemove(Level* level, int x, int y, int z) {}
     virtual void onNeighborChange(Level* level, int x, int y, int z, int neighborId) {}
     virtual bool canSurvive(Level* level, int x, int y, int z) const { return true; }
+
+    // Block breaking (matching Java Tile)
+    virtual float getDestroyProgress(class Player* player) const;
+    virtual void attack(Level* level, int x, int y, int z, Player* player) {}
+    virtual void destroy(Level* level, int x, int y, int z, int data) {}
+    virtual void playerDestroy(Level* level, int x, int y, int z, int data) {}
 
     // Drops
     virtual int getDropId() const { return id; }

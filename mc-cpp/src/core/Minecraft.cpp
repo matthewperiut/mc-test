@@ -9,6 +9,7 @@
 #include "audio/SoundEngine.hpp"
 #include "gui/Gui.hpp"
 #include "gui/Screen.hpp"
+#include "gamemode/GameMode.hpp"
 #include "phys/Vec3.hpp"
 #include "phys/AABB.hpp"
 
@@ -57,6 +58,8 @@ Minecraft::Minecraft()
     : window(nullptr)
     , screenWidth(854)
     , screenHeight(480)
+    , framebufferWidth(854)
+    , framebufferHeight(480)
     , fullscreen(false)
     , running(false)
     , paused(false)
@@ -103,6 +106,9 @@ bool Minecraft::init(int width, int height, bool fs) {
 
     glfwMakeContextCurrent(window);
     glfwSetWindowUserPointer(window, this);
+
+    // Get actual framebuffer size (important for HiDPI displays)
+    glfwGetFramebufferSize(window, &framebufferWidth, &framebufferHeight);
 
     // Set callbacks
     glfwSetKeyCallback(window, glfwKeyCallback);
@@ -159,7 +165,8 @@ bool Minecraft::init(int width, int height, bool fs) {
 }
 
 void Minecraft::initGL() {
-    glViewport(0, 0, screenWidth, screenHeight);
+    // Use framebuffer size for viewport (HiDPI support)
+    glViewport(0, 0, framebufferWidth, framebufferHeight);
 
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
@@ -176,11 +183,15 @@ void Minecraft::initWorld() {
     // Create level
     createLevel(256, 128, 256);
 
+    // Create game mode (survival by default)
+    gameMode = std::make_unique<SurvivalMode>(this);
+
     // Create renderers
     gameRenderer = std::make_unique<GameRenderer>(this);
     levelRenderer = std::make_unique<LevelRenderer>(this, level.get());
 
-    gameRenderer->resize(screenWidth, screenHeight);
+    // Use framebuffer size for renderer (HiDPI support)
+    gameRenderer->resize(framebufferWidth, framebufferHeight);
 }
 
 void Minecraft::createLevel(int width, int height, int depth) {
@@ -252,6 +263,16 @@ void Minecraft::tick() {
         level->tick();
     }
 
+    // Tick game mode
+    if (gameMode) {
+        gameMode->tick();
+    }
+
+    // Tick GUI
+    if (gui) {
+        gui->tick();
+    }
+
     // Tick screen
     if (currentScreen) {
         currentScreen->tick();
@@ -259,6 +280,11 @@ void Minecraft::tick() {
 }
 
 void Minecraft::render(float partialTick) {
+    // Update game mode render state (for break progress)
+    if (gameMode) {
+        gameMode->render(partialTick);
+    }
+
     // Render game
     if (gameRenderer && inGame) {
         gameRenderer->render(partialTick);
@@ -299,22 +325,43 @@ void Minecraft::handleInput() {
         player->handleInput(window);
     }
 
-    // Handle mouse click actions
-    if (player && level) {
-        if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
-            // Attack / break block
-            if (gameRenderer && gameRenderer->hitResult.isTile()) {
-                player->destroyBlock(
-                    gameRenderer->hitResult.x,
-                    gameRenderer->hitResult.y,
-                    gameRenderer->hitResult.z
-                );
+    // Handle mouse click actions - time-based block breaking
+    if (player && level && gameMode && gameRenderer) {
+        static bool wasBreaking = false;
+        bool isBreaking = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+
+        if (isBreaking && gameRenderer->hitResult.isTile()) {
+            int x = gameRenderer->hitResult.x;
+            int y = gameRenderer->hitResult.y;
+            int z = gameRenderer->hitResult.z;
+            int face = static_cast<int>(gameRenderer->hitResult.face);
+
+            if (!wasBreaking) {
+                // Just started breaking
+                gameMode->startDestroyBlock(x, y, z, face);
+            } else {
+                // Continue breaking
+                gameMode->continueDestroyBlock(x, y, z, face);
             }
+
+            // Track block position for crack animation
+            levelRenderer->destroyX = x;
+            levelRenderer->destroyY = y;
+            levelRenderer->destroyZ = z;
+        } else if (wasBreaking && !isBreaking) {
+            // Stopped breaking
+            gameMode->stopDestroyBlock();
+            levelRenderer->destroyProgress = 0.0f;
         }
 
-        if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS) {
-            // Use / place block
-            if (gameRenderer && gameRenderer->hitResult.isTile()) {
+        wasBreaking = isBreaking;
+
+        // Right click - place block (with cooldown)
+        static int placeCooldown = 0;
+        if (placeCooldown > 0) placeCooldown--;
+
+        if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS && placeCooldown == 0) {
+            if (gameRenderer->hitResult.isTile()) {
                 int x = gameRenderer->hitResult.x;
                 int y = gameRenderer->hitResult.y;
                 int z = gameRenderer->hitResult.z;
@@ -330,6 +377,7 @@ void Minecraft::handleInput() {
                 }
 
                 player->placeBlock(x, y, z, 0, Tile::STONE);
+                placeCooldown = 4;  // 4 tick cooldown
             }
         }
     }
@@ -405,13 +453,18 @@ void Minecraft::onMouseScroll(double xoffset, double yoffset) {
 }
 
 void Minecraft::onResize(int width, int height) {
-    screenWidth = width;
-    screenHeight = height;
+    // The framebuffer size callback gives us the actual pixel dimensions
+    framebufferWidth = width;
+    framebufferHeight = height;
 
-    glViewport(0, 0, width, height);
+    // Get the window size for UI calculations
+    glfwGetWindowSize(window, &screenWidth, &screenHeight);
+
+    // Use framebuffer size for OpenGL viewport
+    glViewport(0, 0, framebufferWidth, framebufferHeight);
 
     if (gameRenderer) {
-        gameRenderer->resize(width, height);
+        gameRenderer->resize(framebufferWidth, framebufferHeight);
     }
 }
 
@@ -480,6 +533,7 @@ void Minecraft::shutdown() {
     // Release resources
     currentScreen = nullptr;
     gui.reset();
+    gameMode.reset();
     gameRenderer.reset();
     levelRenderer.reset();
     level.reset();

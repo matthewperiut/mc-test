@@ -16,13 +16,21 @@ void TileRenderer::setLevel(Level* level) {
 }
 
 void TileRenderer::getUV(int textureIndex, float& u0, float& v0, float& u1, float& v1) {
-    int tx = textureIndex % TILES_PER_ROW;
-    int ty = textureIndex / TILES_PER_ROW;
+    // Java calculation:
+    // int xt = (tex & 15) << 4;  // column * 16
+    // int yt = tex & 240;        // row * 16
+    // u0 = xt / 256.0
+    // u1 = (xt + 15.99) / 256.0
+    // v0 = yt / 256.0
+    // v1 = (yt + 15.99) / 256.0
 
-    u0 = tx * TILE_SIZE;
-    v0 = ty * TILE_SIZE;
-    u1 = u0 + TILE_SIZE;
-    v1 = v0 + TILE_SIZE;
+    int xt = (textureIndex & 15) << 4;  // column * 16 = pixel X
+    int yt = textureIndex & 240;         // row * 16 = pixel Y
+
+    u0 = static_cast<float>(xt) / 256.0f;
+    u1 = (static_cast<float>(xt) + 15.99f) / 256.0f;
+    v0 = static_cast<float>(yt) / 256.0f;
+    v1 = (static_cast<float>(yt) + 15.99f) / 256.0f;
 }
 
 float TileRenderer::getBrightness(int x, int y, int z) {
@@ -103,47 +111,75 @@ bool TileRenderer::renderTile(Tile* tile, int x, int y, int z) {
 }
 
 void TileRenderer::renderCube(Tile* tile, int x, int y, int z) {
+    // Face brightness multipliers (matching Java)
+    float c0 = 0.5f;   // Bottom face
+    float c1 = 1.0f;   // Top face
+    float c2 = 0.8f;   // North/South faces
+    float c3 = 0.6f;   // West/East faces
+
+    // Grass color tint (the grass texture is grayscale, needs green tint)
+    // Beta 1.2_02 used a fixed grass color before biome-based coloring
+    bool isGrass = (tile->id == Tile::GRASS);
+    float grassR = 0.486f;  // 124/255
+    float grassG = 0.741f;  // 189/255
+    float grassB = 0.420f;  // 107/255
+
     // Render each face if visible
     if (shouldRenderFace(x, y, z, 0)) {
+        float br = getBrightness(x, y - 1, z) * c0;
+        t.color(br, br, br);
         renderFaceDown(tile, x, y, z, tile->getTexture(0));
     }
     if (shouldRenderFace(x, y, z, 1)) {
+        float br = getBrightness(x, y + 1, z) * c1;
+        // Apply grass tint to top face
+        if (isGrass) {
+            t.color(br * grassR, br * grassG, br * grassB);
+        } else {
+            t.color(br, br, br);
+        }
         renderFaceUp(tile, x, y, z, tile->getTexture(1));
     }
     if (shouldRenderFace(x, y, z, 2)) {
+        float br = getBrightness(x, y, z - 1) * c2;
+        t.color(br, br, br);
         renderFaceNorth(tile, x, y, z, tile->getTexture(2));
     }
     if (shouldRenderFace(x, y, z, 3)) {
+        float br = getBrightness(x, y, z + 1) * c2;
+        t.color(br, br, br);
         renderFaceSouth(tile, x, y, z, tile->getTexture(3));
     }
     if (shouldRenderFace(x, y, z, 4)) {
+        float br = getBrightness(x - 1, y, z) * c3;
+        t.color(br, br, br);
         renderFaceWest(tile, x, y, z, tile->getTexture(4));
     }
     if (shouldRenderFace(x, y, z, 5)) {
+        float br = getBrightness(x + 1, y, z) * c3;
+        t.color(br, br, br);
         renderFaceEast(tile, x, y, z, tile->getTexture(5));
     }
 }
 
+// Java renderFaceUp renders the BOTTOM face (confusing naming)
 void TileRenderer::renderFaceDown(Tile* /*tile*/, double x, double y, double z, int texture) {
     float u0, v0, u1, v1;
     getUV(texture, u0, v0, u1, v1);
 
-    float brightness = getBrightness(static_cast<int>(x), static_cast<int>(y) - 1, static_cast<int>(z)) * 0.5f;
-    t.color(brightness, brightness, brightness);
-
+    // Bottom face (y = y) - CCW winding when viewed from below
     t.vertexUV(x,     y, z + 1, u0, v1);
     t.vertexUV(x,     y, z,     u0, v0);
     t.vertexUV(x + 1, y, z,     u1, v0);
     t.vertexUV(x + 1, y, z + 1, u1, v1);
 }
 
+// Java renderFaceDown renders the TOP face (confusing naming)
 void TileRenderer::renderFaceUp(Tile* /*tile*/, double x, double y, double z, int texture) {
     float u0, v0, u1, v1;
     getUV(texture, u0, v0, u1, v1);
 
-    float brightness = getBrightness(static_cast<int>(x), static_cast<int>(y) + 1, static_cast<int>(z));
-    t.color(brightness, brightness, brightness);
-
+    // Top face (y = y + 1)
     t.vertexUV(x,     y + 1, z,     u0, v0);
     t.vertexUV(x,     y + 1, z + 1, u0, v1);
     t.vertexUV(x + 1, y + 1, z + 1, u1, v1);
@@ -154,9 +190,7 @@ void TileRenderer::renderFaceNorth(Tile* /*tile*/, double x, double y, double z,
     float u0, v0, u1, v1;
     getUV(texture, u0, v0, u1, v1);
 
-    float brightness = getBrightness(static_cast<int>(x), static_cast<int>(y), static_cast<int>(z) - 1) * 0.8f;
-    t.color(brightness, brightness, brightness);
-
+    // North face (z = z)
     t.vertexUV(x,     y + 1, z, u1, v0);
     t.vertexUV(x + 1, y + 1, z, u0, v0);
     t.vertexUV(x + 1, y,     z, u0, v1);
@@ -167,9 +201,7 @@ void TileRenderer::renderFaceSouth(Tile* /*tile*/, double x, double y, double z,
     float u0, v0, u1, v1;
     getUV(texture, u0, v0, u1, v1);
 
-    float brightness = getBrightness(static_cast<int>(x), static_cast<int>(y), static_cast<int>(z) + 1) * 0.8f;
-    t.color(brightness, brightness, brightness);
-
+    // South face (z = z + 1)
     t.vertexUV(x,     y,     z + 1, u0, v1);
     t.vertexUV(x + 1, y,     z + 1, u1, v1);
     t.vertexUV(x + 1, y + 1, z + 1, u1, v0);
@@ -180,9 +212,7 @@ void TileRenderer::renderFaceWest(Tile* /*tile*/, double x, double y, double z, 
     float u0, v0, u1, v1;
     getUV(texture, u0, v0, u1, v1);
 
-    float brightness = getBrightness(static_cast<int>(x) - 1, static_cast<int>(y), static_cast<int>(z)) * 0.6f;
-    t.color(brightness, brightness, brightness);
-
+    // West face (x = x)
     t.vertexUV(x, y,     z,     u1, v1);
     t.vertexUV(x, y,     z + 1, u0, v1);
     t.vertexUV(x, y + 1, z + 1, u0, v0);
@@ -193,9 +223,7 @@ void TileRenderer::renderFaceEast(Tile* /*tile*/, double x, double y, double z, 
     float u0, v0, u1, v1;
     getUV(texture, u0, v0, u1, v1);
 
-    float brightness = getBrightness(static_cast<int>(x) + 1, static_cast<int>(y), static_cast<int>(z)) * 0.6f;
-    t.color(brightness, brightness, brightness);
-
+    // East face (x = x + 1)
     t.vertexUV(x + 1, y + 1, z,     u0, v0);
     t.vertexUV(x + 1, y + 1, z + 1, u1, v0);
     t.vertexUV(x + 1, y,     z + 1, u1, v1);
@@ -210,7 +238,7 @@ void TileRenderer::renderCross(Tile* tile, int x, int y, int z) {
     t.color(brightness, brightness, brightness);
 
     // Two crossed quads
-    float d = 0.45f;
+    double d = 0.45;
 
     // Diagonal 1
     t.vertexUV(x + 0.5 - d, y,     z + 0.5 - d, u0, v1);
@@ -243,8 +271,8 @@ void TileRenderer::renderTorch(Tile* tile, int x, int y, int z, int /*metadata*/
     t.color(brightness, brightness, brightness);
 
     // Torch stick (simplified)
-    float w = 0.0625f;  // 1/16
-    float h = 0.625f;   // 10/16
+    double w = 0.0625;  // 1/16
+    double h = 0.625;   // 10/16
 
     // Front
     t.vertexUV(x + 0.5 - w, y,     z + 0.5 + w, u0, v1);
@@ -279,7 +307,7 @@ void TileRenderer::renderLiquid(Tile* tile, int x, int y, int z) {
     t.color(brightness, brightness, brightness);
 
     // Render as slightly lowered cube
-    float h = 0.875f;  // Water height
+    double h = 0.875;  // Water height
 
     // Top face (lowered)
     if (shouldRenderFace(x, y, z, 1)) {
@@ -309,7 +337,7 @@ void TileRenderer::renderLiquid(Tile* tile, int x, int y, int z) {
 
 void TileRenderer::renderCactus(Tile* tile, int x, int y, int z) {
     float u0, v0, u1, v1;
-    float offset = 0.0625f;  // Inset by 1/16
+    double offset = 0.0625;  // Inset by 1/16
 
     // Sides are inset
     getUV(tile->getTexture(2), u0, v0, u1, v1);
@@ -345,9 +373,13 @@ void TileRenderer::renderCactus(Tile* tile, int x, int y, int z) {
 
     // Top and bottom
     if (shouldRenderFace(x, y, z, 1)) {
+        brightness = getBrightness(x, y + 1, z);
+        t.color(brightness, brightness, brightness);
         renderFaceUp(tile, x, y, z, tile->getTexture(1));
     }
     if (shouldRenderFace(x, y, z, 0)) {
+        brightness = getBrightness(x, y - 1, z) * 0.5f;
+        t.color(brightness, brightness, brightness);
         renderFaceDown(tile, x, y, z, tile->getTexture(0));
     }
 }

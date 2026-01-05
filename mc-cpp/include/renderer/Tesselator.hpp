@@ -7,15 +7,16 @@
 namespace mc {
 
 /**
- * Tesselator - A vertex buffer system similar to Minecraft's original.
- * Uses modern OpenGL (VAO/VBO) but provides a similar API to the Java version.
+ * Tesselator - A vertex buffer system matching Minecraft's original Java implementation.
+ * Uses client-side vertex arrays (NOT VAO/VBO) so that draw calls can be captured
+ * into display lists.
  *
- * Vertex format (32 bytes per vertex):
- * - Position: 3 floats (12 bytes)
- * - Texture:  2 floats (8 bytes)
- * - Color:    4 bytes (RGBA packed)
- * - Normal:   3 bytes + 1 padding (4 bytes)
- * - Padding:  4 bytes (for alignment)
+ * Vertex format (32 bytes per vertex = 8 ints):
+ * - Position: 3 floats (12 bytes) at byte offset 0
+ * - Texture:  2 floats (8 bytes) at byte offset 12
+ * - Color:    4 bytes (RGBA) at byte offset 20
+ * - Normal:   4 bytes (3 signed bytes + padding) at byte offset 24
+ * - Padding:  4 bytes at byte offset 28
  */
 class Tesselator {
 public:
@@ -28,31 +29,30 @@ public:
     // Begin/End batch
     void begin(GLenum mode = GL_QUADS);
     void end();
-    void draw();
 
     // Vertex data
-    void vertex(float x, float y, float z);
-    void vertexUV(float x, float y, float z, float u, float v);
+    void vertex(double x, double y, double z);
+    void vertexUV(double x, double y, double z, double u, double v);
 
     // State setters (affect subsequent vertices)
     void color(float r, float g, float b);
     void color(float r, float g, float b, float a);
+    void color(int r, int g, int b);
+    void color(int r, int g, int b, int a);
     void color(int rgba);
-    void tex(float u, float v);
+    void tex(double u, double v);
     void normal(float x, float y, float z);
-    void offset(float x, float y, float z);
+    void offset(double xo, double yo, double zo);
 
     // State management
     void noColor();
-    void setColorState(bool hasColor);
-    void setNormalState(bool hasNormal);
-    void setTextureState(bool hasTexture);
+    void setColorOpaque_F(float r, float g, float b);
 
     // Clear state
     void clear();
 
     // Stats
-    int getVertexCount() const { return vertexCount; }
+    int getVertexCount() const { return vertices; }
 
 private:
     Tesselator();
@@ -60,34 +60,30 @@ private:
     Tesselator(const Tesselator&) = delete;
     Tesselator& operator=(const Tesselator&) = delete;
 
-    void ensureCapacity(size_t additionalVertices);
-    void flushIfNeeded();
+    void draw();
 
-    // OpenGL objects
-    GLuint vao;
-    GLuint vbo;
-    bool initialized;
-
-    // Vertex data buffer
-    static constexpr size_t INITIAL_BUFFER_SIZE = 0x200000;  // 2MB
-    static constexpr size_t VERTEX_SIZE = 32;  // bytes per vertex
-    std::vector<uint8_t> buffer;
-    size_t bufferPos;
-    int vertexCount;
+    // Vertex data array (matches Java int[] array)
+    static constexpr int MAX_VERTICES = 524288;  // 2097152 / 4 quads worth
+    static constexpr int VERTEX_STRIDE = 8;      // 8 ints (32 bytes) per vertex
+    std::vector<int> array;
+    int p;           // Current position in array (in ints)
+    int vertices;    // Number of vertices added
+    int count;       // Vertex count within current primitive
 
     // Current state
-    float currentU, currentV;
-    float currentR, currentG, currentB, currentA;
-    float currentNX, currentNY, currentNZ;
-    float offsetX, offsetY, offsetZ;
+    double u, v;
+    int col;
+    int normalValue;
+    double xo, yo, zo;
 
     // State flags
     bool hasColor;
     bool hasTexture;
     bool hasNormal;
-    bool drawing;
+    bool noColorFlag;
+    bool tesselating;
 
-    GLenum drawMode;
+    GLenum mode;
 };
 
 } // namespace mc

@@ -48,7 +48,9 @@ void MouseHandler::poll() {
 
     glfwGetCursorPos(window, &mouseX, &mouseY);
     deltaX = static_cast<int>(mouseX - lastMouseX);
-    deltaY = static_cast<int>(mouseY - lastMouseY);
+    // GLFW Y increases downward, but LWJGL Y increases upward
+    // Negate to match Java Minecraft behavior
+    deltaY = -static_cast<int>(mouseY - lastMouseY);
     lastMouseX = mouseX;
     lastMouseY = mouseY;
 }

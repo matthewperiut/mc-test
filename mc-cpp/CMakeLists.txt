@@ -71,6 +71,10 @@ set(GUI_SOURCES
     src/gui/Screen.cpp
 )
 
+set(GAMEMODE_SOURCES
+    src/gamemode/GameMode.cpp
+)
+
 # Combine all sources
 set(ALL_SOURCES
     src/main.cpp
@@ -82,6 +86,7 @@ set(ALL_SOURCES
     ${ENTITY_SOURCES}
     ${AUDIO_SOURCES}
     ${GUI_SOURCES}
+    ${GAMEMODE_SOURCES}
 )
 
 # Create executable
