@@ -1,0 +1,72 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+group = 'net.minecraft'
+version = 'b1.2_02'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+    maven { url = 'https://libraries.minecraft.net' }
+    maven { url = 'https://repo.legacyfabric.net/repository/legacyfabric/' }
+}
+
+def lwjglVersion = '2.9.4-nightly-20150209'
+def lwjglNatives = 'natives-linux'
+
+dependencies {
+    // LWJGL 2
+    implementation "org.lwjgl.lwjgl:lwjgl:${lwjglVersion}"
+    implementation "org.lwjgl.lwjgl:lwjgl_util:${lwjglVersion}"
+    runtimeOnly "org.lwjgl.lwjgl:lwjgl-platform:${lwjglVersion}:${lwjglNatives}"
+
+    // Paulscode Sound System
+    implementation 'com.paulscode:codecjorbis:20101023'
+    implementation 'com.paulscode:codecwav:20101023'
+    implementation 'com.paulscode:libraryjavasound:20101123'
+    implementation 'com.paulscode:librarylwjglopenal:20100824'
+    implementation 'com.paulscode:soundsystem:20120107'
+
+    // JOrbis for Ogg Vorbis
+    implementation 'org.jcraft:jorbis:0.0.17'
+}
+
+application {
+    mainClass = 'net.minecraft.client.Minecraft'
+}
+
+tasks.named('run') {
+    dependsOn extractNatives
+    workingDir = file('run')
+    doFirst {
+        workingDir.mkdirs()
+        def nativesDir = file("${buildDir}/natives").absolutePath
+        jvmArgs = [
+            "-Djava.library.path=${nativesDir}",
+            "-Dorg.lwjgl.librarypath=${nativesDir}",
+            "-Dnet.java.games.input.librarypath=${nativesDir}"
+        ]
+    }
+}
+
+tasks.register('extractNatives', Copy) {
+    dependsOn configurations.runtimeClasspath
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from {
+        configurations.runtimeClasspath.findAll { it.name.contains('natives') }.collect { zipTree(it) }
+    }
+    into "${buildDir}/natives"
+}
+
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.compilerArgs += ['-Xlint:-deprecation', '-Xlint:-unchecked']
+}
