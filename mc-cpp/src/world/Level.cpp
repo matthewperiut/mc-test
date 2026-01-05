@@ -1,0 +1,381 @@
+#include "world/Level.hpp"
+#include "world/tile/Tile.hpp"
+#include "entity/Entity.hpp"
+#include "entity/Player.hpp"
+#include "util/Mth.hpp"
+#include <algorithm>
+#include <cmath>
+
+namespace mc {
+
+Level::Level(int width, int height, int depth, long long seed)
+    : xChunks(width / CHUNK_SIZE)
+    , yChunks(height / CHUNK_SIZE)
+    , zChunks(depth / CHUNK_SIZE)
+    , width(width)
+    , height(height)
+    , depth(depth)
+    , seed(seed)
+    , worldTime(0)
+    , spawnX(width / 2)
+    , spawnY(height / 2 + 16)
+    , spawnZ(depth / 2)
+    , raining(false)
+    , thundering(false)
+    , rainLevel(0.0f)
+{
+    size_t totalBlocks = static_cast<size_t>(width) * height * depth;
+    blocks.resize(totalBlocks, 0);
+    data.resize(totalBlocks, 0);
+    skyLight.resize(totalBlocks, 15);  // Full sky light
+    blockLight.resize(totalBlocks, 0);
+    heightMap.resize(static_cast<size_t>(width) * depth, 0);
+
+    Mth::setSeed(static_cast<uint64_t>(seed));
+}
+
+Level::~Level() {
+    entities.clear();
+}
+
+int Level::getIndex(int x, int y, int z) const {
+    return (y * depth + z) * width + x;
+}
+
+bool Level::isInBounds(int x, int y, int z) const {
+    return x >= 0 && x < width &&
+           y >= 0 && y < height &&
+           z >= 0 && z < depth;
+}
+
+int Level::getTile(int x, int y, int z) const {
+    if (!isInBounds(x, y, z)) return 0;
+    return blocks[getIndex(x, y, z)];
+}
+
+bool Level::setTile(int x, int y, int z, int tileId) {
+    if (!isInBounds(x, y, z)) return false;
+
+    int index = getIndex(x, y, z);
+    int oldTile = blocks[index];
+
+    if (oldTile == tileId) return false;
+
+    blocks[index] = static_cast<uint8_t>(tileId);
+
+    // Update height map
+    updateHeightMap(x, z);
+
+    // Notify listeners
+    notifyBlockChanged(x, y, z);
+
+    // Update lighting
+    updateLightAt(x, y, z);
+
+    return true;
+}
+
+bool Level::setTileWithData(int x, int y, int z, int tileId, int metadata) {
+    if (!isInBounds(x, y, z)) return false;
+
+    int index = getIndex(x, y, z);
+    blocks[index] = static_cast<uint8_t>(tileId);
+    data[index] = static_cast<uint8_t>(metadata);
+
+    updateHeightMap(x, z);
+    notifyBlockChanged(x, y, z);
+    updateLightAt(x, y, z);
+
+    return true;
+}
+
+int Level::getData(int x, int y, int z) const {
+    if (!isInBounds(x, y, z)) return 0;
+    return data[getIndex(x, y, z)];
+}
+
+bool Level::setData(int x, int y, int z, int metadata) {
+    if (!isInBounds(x, y, z)) return false;
+    data[getIndex(x, y, z)] = static_cast<uint8_t>(metadata);
+    notifyBlockChanged(x, y, z);
+    return true;
+}
+
+bool Level::isAir(int x, int y, int z) const {
+    return getTile(x, y, z) == 0;
+}
+
+bool Level::isSolid(int x, int y, int z) const {
+    Tile* tile = getTileAt(x, y, z);
+    return tile && tile->solid;
+}
+
+bool Level::isLiquid(int x, int y, int z) const {
+    int id = getTile(x, y, z);
+    return id == Tile::WATER || id == Tile::STILL_WATER ||
+           id == Tile::LAVA || id == Tile::STILL_LAVA;
+}
+
+Tile* Level::getTileAt(int x, int y, int z) const {
+    int id = getTile(x, y, z);
+    return (id >= 0 && id < 256) ? Tile::tiles[id] : nullptr;
+}
+
+std::vector<AABB> Level::getCollisionBoxes(Entity* /*entity*/, const AABB& area) const {
+    std::vector<AABB> boxes;
+
+    int x0 = static_cast<int>(std::floor(area.x0));
+    int y0 = static_cast<int>(std::floor(area.y0));
+    int z0 = static_cast<int>(std::floor(area.z0));
+    int x1 = static_cast<int>(std::floor(area.x1)) + 1;
+    int y1 = static_cast<int>(std::floor(area.y1)) + 1;
+    int z1 = static_cast<int>(std::floor(area.z1)) + 1;
+
+    for (int x = x0; x < x1; x++) {
+        for (int y = y0; y < y1; y++) {
+            for (int z = z0; z < z1; z++) {
+                Tile* tile = getTileAt(x, y, z);
+                if (tile && tile->canCollide()) {
+                    AABB box = tile->getCollisionBox(x, y, z);
+                    if (box.x1 > box.x0 && area.intersects(box)) {
+                        boxes.push_back(box);
+                    }
+                }
+            }
+        }
+    }
+
+    return boxes;
+}
+
+HitResult Level::clip(const Vec3& start, const Vec3& end, bool stopOnLiquid) const {
+    // Ray marching through blocks
+    int x = static_cast<int>(std::floor(start.x));
+    int y = static_cast<int>(std::floor(start.y));
+    int z = static_cast<int>(std::floor(start.z));
+
+    int endX = static_cast<int>(std::floor(end.x));
+    int endY = static_cast<int>(std::floor(end.y));
+    int endZ = static_cast<int>(std::floor(end.z));
+
+    // Simple raycast (could be optimized with DDA algorithm)
+    for (int i = 0; i < 200; i++) {  // Max iterations
+        if (x == endX && y == endY && z == endZ) break;
+
+        Tile* tile = getTileAt(x, y, z);
+        if (tile && (tile->solid || (stopOnLiquid && tile->renderShape == TileShape::LIQUID))) {
+            // Determine which face was hit
+            Direction face = Direction::UP;  // Simplified
+            Vec3 hitPos(x + 0.5, y + 0.5, z + 0.5);
+            return HitResult(x, y, z, face, hitPos);
+        }
+
+        // Step to next block (simplified - should use proper DDA)
+        double dx = end.x - start.x;
+        double dy = end.y - start.y;
+        double dz = end.z - start.z;
+
+        if (std::abs(dx) > std::abs(dy) && std::abs(dx) > std::abs(dz)) {
+            x += (dx > 0) ? 1 : -1;
+        } else if (std::abs(dy) > std::abs(dz)) {
+            y += (dy > 0) ? 1 : -1;
+        } else {
+            z += (dz > 0) ? 1 : -1;
+        }
+    }
+
+    return HitResult();  // No hit
+}
+
+int Level::getSkyLight(int x, int y, int z) const {
+    if (!isInBounds(x, y, z)) return 15;
+    return skyLight[getIndex(x, y, z)];
+}
+
+int Level::getBlockLight(int x, int y, int z) const {
+    if (!isInBounds(x, y, z)) return 0;
+    return blockLight[getIndex(x, y, z)];
+}
+
+float Level::getBrightness(int x, int y, int z) const {
+    int sky = getSkyLight(x, y, z);
+    int block = getBlockLight(x, y, z);
+    int light = std::max(sky, block);
+
+    // Convert to brightness factor
+    static const float brightnessTable[16] = {
+        0.05f, 0.067f, 0.085f, 0.106f, 0.129f, 0.156f, 0.186f, 0.221f,
+        0.261f, 0.309f, 0.367f, 0.437f, 0.525f, 0.638f, 0.789f, 1.0f
+    };
+
+    return brightnessTable[light];
+}
+
+void Level::updateLightAt(int /*x*/, int /*y*/, int /*z*/) {
+    // Simplified - would propagate light changes
+}
+
+void Level::updateLights() {
+    // Batch light updates
+}
+
+int Level::getHeightAt(int x, int z) const {
+    if (x < 0 || x >= width || z < 0 || z >= depth) return 0;
+    return heightMap[z * width + x];
+}
+
+void Level::updateHeightMap(int x, int z) {
+    if (x < 0 || x >= width || z < 0 || z >= depth) return;
+
+    int maxY = 0;
+    for (int y = height - 1; y >= 0; y--) {
+        if (!isAir(x, y, z)) {
+            maxY = y + 1;
+            break;
+        }
+    }
+    heightMap[z * width + x] = maxY;
+}
+
+void Level::addEntity(std::unique_ptr<Entity> entity) {
+    entity->level = this;
+    if (auto* player = dynamic_cast<Player*>(entity.get())) {
+        players.push_back(player);
+    }
+    entities.push_back(std::move(entity));
+}
+
+void Level::removeEntity(Entity* entity) {
+    if (auto* player = dynamic_cast<Player*>(entity)) {
+        players.erase(std::remove(players.begin(), players.end(), player), players.end());
+    }
+
+    entities.erase(
+        std::remove_if(entities.begin(), entities.end(),
+            [entity](const std::unique_ptr<Entity>& e) { return e.get() == entity; }),
+        entities.end()
+    );
+}
+
+Entity* Level::getEntityById(int id) {
+    for (auto& entity : entities) {
+        if (entity->entityId == id) return entity.get();
+    }
+    return nullptr;
+}
+
+std::vector<Entity*> Level::getEntitiesInArea(const AABB& area) const {
+    std::vector<Entity*> result;
+    for (const auto& entity : entities) {
+        if (entity->bb.intersects(area)) {
+            result.push_back(entity.get());
+        }
+    }
+    return result;
+}
+
+void Level::tick() {
+    worldTime++;
+    tickEntities();
+    tickTiles();
+}
+
+void Level::tickEntities() {
+    for (auto& entity : entities) {
+        entity->tick();
+    }
+
+    // Remove dead entities
+    entities.erase(
+        std::remove_if(entities.begin(), entities.end(),
+            [](const std::unique_ptr<Entity>& e) { return e->removed; }),
+        entities.end()
+    );
+}
+
+void Level::tickTiles() {
+    // Random tile ticks for grass growth, etc.
+    for (int i = 0; i < 400; i++) {
+        int x = Mth::random(0, width - 1);
+        int y = Mth::random(0, height - 1);
+        int z = Mth::random(0, depth - 1);
+
+        int tileId = getTile(x, y, z);
+        if (tileId > 0 && Tile::shouldTick[tileId]) {
+            Tile* tile = Tile::tiles[tileId];
+            if (tile) {
+                tile->tick(this, x, y, z);
+            }
+        }
+    }
+}
+
+void Level::addListener(LevelListener* listener) {
+    listeners.push_back(listener);
+}
+
+void Level::removeListener(LevelListener* listener) {
+    listeners.erase(std::remove(listeners.begin(), listeners.end(), listener), listeners.end());
+}
+
+void Level::notifyBlockChanged(int x, int y, int z) {
+    for (auto* listener : listeners) {
+        listener->tileChanged(x, y, z);
+    }
+}
+
+void Level::generateFlatWorld() {
+    // Simple flat world generation
+    int groundLevel = 64;
+
+    for (int x = 0; x < width; x++) {
+        for (int z = 0; z < depth; z++) {
+            // Bedrock
+            setTile(x, 0, z, Tile::BEDROCK);
+
+            // Stone
+            for (int y = 1; y < groundLevel - 4; y++) {
+                setTile(x, y, z, Tile::STONE);
+            }
+
+            // Dirt
+            for (int y = groundLevel - 4; y < groundLevel; y++) {
+                setTile(x, y, z, Tile::DIRT);
+            }
+
+            // Grass
+            setTile(x, groundLevel, z, Tile::GRASS);
+        }
+    }
+
+    // Update spawn point
+    spawnY = groundLevel + 2;
+}
+
+void Level::generateTerrain() {
+    // Would use Perlin noise for terrain generation
+    // For now, just call flat world
+    generateFlatWorld();
+}
+
+void Level::initializeLight() {
+    // Initialize sky light from top down
+    for (int x = 0; x < width; x++) {
+        for (int z = 0; z < depth; z++) {
+            propagateSkyLight(x, z);
+        }
+    }
+}
+
+void Level::propagateSkyLight(int x, int z) {
+    int light = 15;
+    for (int y = height - 1; y >= 0; y--) {
+        Tile* tile = getTileAt(x, y, z);
+        if (tile && tile->blocksLight) {
+            light = 0;
+        }
+        skyLight[getIndex(x, y, z)] = static_cast<uint8_t>(light);
+    }
+}
+
+} // namespace mc

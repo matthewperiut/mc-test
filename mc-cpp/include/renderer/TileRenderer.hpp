@@ -1,0 +1,55 @@
+#pragma once
+
+#include "world/tile/Tile.hpp"
+
+namespace mc {
+
+class Level;
+class Tesselator;
+
+class TileRenderer {
+public:
+    Level* level;
+    bool renderAllFaces;
+
+    // Texture coordinates (for 256x256 terrain.png with 16x16 tiles)
+    static constexpr int TILES_PER_ROW = 16;
+    static constexpr float TILE_SIZE = 1.0f / 16.0f;
+
+    TileRenderer();
+    void setLevel(Level* level);
+
+    // Render a tile at world position
+    bool renderTile(Tile* tile, int x, int y, int z);
+    bool renderTileInWorld(int x, int y, int z);
+
+    // Render specific shapes
+    void renderCube(Tile* tile, int x, int y, int z);
+    void renderCross(Tile* tile, int x, int y, int z);
+    void renderTorch(Tile* tile, int x, int y, int z, int metadata);
+    void renderLiquid(Tile* tile, int x, int y, int z);
+    void renderCactus(Tile* tile, int x, int y, int z);
+
+    // Render individual faces
+    void renderFaceDown(Tile* tile, double x, double y, double z, int texture);
+    void renderFaceUp(Tile* tile, double x, double y, double z, int texture);
+    void renderFaceNorth(Tile* tile, double x, double y, double z, int texture);
+    void renderFaceSouth(Tile* tile, double x, double y, double z, int texture);
+    void renderFaceWest(Tile* tile, double x, double y, double z, int texture);
+    void renderFaceEast(Tile* tile, double x, double y, double z, int texture);
+
+    // Get brightness at position
+    float getBrightness(int x, int y, int z);
+    float getAverageBrightness(int x0, int y0, int z0, int x1, int y1, int z1);
+
+private:
+    // Get UV coordinates from texture index
+    void getUV(int textureIndex, float& u0, float& v0, float& u1, float& v1);
+
+    // Check if face should be rendered (neighbor is transparent)
+    bool shouldRenderFace(int x, int y, int z, int face);
+
+    Tesselator& t;
+};
+
+} // namespace mc
