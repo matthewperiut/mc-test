@@ -41,6 +41,12 @@ public:
     float destroyProgress;
     int destroyX, destroyY, destroyZ;
 
+    // Display lists for sky rendering (matches Java)
+    unsigned int starList;
+    unsigned int skyList;
+    unsigned int darkList;
+    bool skyListsInitialized;
+
     LevelRenderer(Minecraft* minecraft, Level* level);
     ~LevelRenderer();
 
@@ -74,7 +80,10 @@ private:
     void sortChunks();
 
     // Sky rendering helpers
-    void renderStars();
+    void initSkyDisplayLists();
+    void buildStarList();
+    void buildSkyList();
+    void buildDarkList();
     float getTimeOfDay() const;
     void getSkyColor(float timeOfDay, float& r, float& g, float& b) const;
     float* getSunriseColor(float timeOfDay) const;

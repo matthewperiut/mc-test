@@ -424,28 +424,8 @@ void GameRenderer::renderGui(float /*partialTick*/) {
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_LIGHTING);
 
-    // Render crosshair
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ONE_MINUS_SRC_COLOR);
+    // GUI elements rendered via Gui class
 
-    float cx = screenWidth / 2.0f;
-    float cy = screenHeight / 2.0f;
-    float size = 10.0f;
-
-    glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-    glDisable(GL_TEXTURE_2D);
-
-    glBegin(GL_LINES);
-    // Horizontal
-    glVertex2f(cx - size, cy);
-    glVertex2f(cx + size, cy);
-    // Vertical
-    glVertex2f(cx, cy - size);
-    glVertex2f(cx, cy + size);
-    glEnd();
-
-    glEnable(GL_TEXTURE_2D);
-    glDisable(GL_BLEND);
     glEnable(GL_DEPTH_TEST);
 
     // Restore matrices

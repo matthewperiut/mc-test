@@ -22,6 +22,8 @@ LevelRenderer::LevelRenderer(Minecraft* minecraft, Level* level)
     , firstRebuild(true)
     , destroyProgress(0.0f)
     , destroyX(-1), destroyY(-1), destroyZ(-1)
+    , starList(0), skyList(0), darkList(0)
+    , skyListsInitialized(false)
 {
     setLevel(level);
 }
@@ -31,6 +33,13 @@ LevelRenderer::~LevelRenderer() {
         level->removeListener(this);
     }
     disposeChunks();
+
+    // Delete sky display lists
+    if (skyListsInitialized) {
+        glDeleteLists(starList, 1);
+        glDeleteLists(skyList, 1);
+        glDeleteLists(darkList, 1);
+    }
 }
 
 void LevelRenderer::setLevel(Level* newLevel) {
@@ -205,8 +214,11 @@ void LevelRenderer::render(float /*partialTick*/, int pass) {
 }
 
 void LevelRenderer::renderSky(float partialTick) {
-    // Match Java LevelRenderer.renderSky() exactly - flat planes, not a dome
+    // Match Java LevelRenderer.renderSky() exactly - uses display lists for performance
     if (!minecraft || !minecraft->player) return;
+
+    // Initialize display lists on first call (requires OpenGL context)
+    initSkyDisplayLists();
 
     LocalPlayer* player = minecraft->player;
     float camX = static_cast<float>(player->getInterpolatedX(partialTick));
@@ -234,22 +246,8 @@ void LevelRenderer::renderSky(float partialTick) {
     glPushMatrix();
     glTranslatef(camX, camY, camZ);
 
-    // Java sky: flat grid of quads at Y=16 above camera
-    // s=64, d=256/64+2=6, so grid goes from -384 to 384
-    int s = 64;
-    int d = 256 / s + 2;
-    float yy = 16.0f;
-
-    glBegin(GL_QUADS);
-    for (int xx = -s * d; xx <= s * d; xx += s) {
-        for (int zz = -s * d; zz <= s * d; zz += s) {
-            glVertex3f(static_cast<float>(xx), yy, static_cast<float>(zz));
-            glVertex3f(static_cast<float>(xx + s), yy, static_cast<float>(zz));
-            glVertex3f(static_cast<float>(xx + s), yy, static_cast<float>(zz + s));
-            glVertex3f(static_cast<float>(xx), yy, static_cast<float>(zz + s));
-        }
-    }
-    glEnd();
+    // Render sky plane using display list (matches Java: glCallList(this.skyList))
+    glCallList(skyList);
 
     glDisable(GL_FOG);
     glDisable(GL_ALPHA_TEST);
@@ -315,12 +313,12 @@ void LevelRenderer::renderSky(float partialTick) {
         glEnd();
     }
 
-    // Render stars at night
+    // Render stars at night using display list (matches Java: glCallList(this.starList))
     glDisable(GL_TEXTURE_2D);
     float starBrightness = getStarBrightness(timeOfDay);
     if (starBrightness > 0.0f) {
         glColor4f(starBrightness, starBrightness, starBrightness, starBrightness);
-        renderStars();
+        glCallList(starList);
     }
 
     glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
@@ -329,24 +327,14 @@ void LevelRenderer::renderSky(float partialTick) {
     glEnable(GL_FOG);
     glPopMatrix();  // Pop time rotation
 
-    // Java dark plane: flat grid at Y=-16 below camera
+    // Java dark plane: using display list (matches Java: glCallList(this.darkList))
     glDisable(GL_TEXTURE_2D);
     float voidR = skyR * 0.2f + 0.04f;
     float voidG = skyG * 0.2f + 0.04f;
     float voidB = skyB * 0.6f + 0.1f;
     glColor3f(voidR, voidG, voidB);
 
-    yy = -16.0f;
-    glBegin(GL_QUADS);
-    for (int xx = -s * d; xx <= s * d; xx += s) {
-        for (int zz = -s * d; zz <= s * d; zz += s) {
-            glVertex3f(static_cast<float>(xx + s), yy, static_cast<float>(zz));
-            glVertex3f(static_cast<float>(xx), yy, static_cast<float>(zz));
-            glVertex3f(static_cast<float>(xx), yy, static_cast<float>(zz + s));
-            glVertex3f(static_cast<float>(xx + s), yy, static_cast<float>(zz + s));
-        }
-    }
-    glEnd();
+    glCallList(darkList);
 
     glPopMatrix();  // Pop camera translation
 
@@ -357,7 +345,25 @@ void LevelRenderer::renderSky(float partialTick) {
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
-void LevelRenderer::renderStars() {
+void LevelRenderer::initSkyDisplayLists() {
+    if (skyListsInitialized) return;
+
+    // Generate display lists (matching Java LevelRenderer constructor)
+    starList = glGenLists(1);
+    skyList = glGenLists(1);
+    darkList = glGenLists(1);
+
+    buildStarList();
+    buildSkyList();
+    buildDarkList();
+
+    skyListsInitialized = true;
+}
+
+void LevelRenderer::buildStarList() {
+    // Build star display list (matches Java exactly)
+    glNewList(starList, GL_COMPILE);
+
     // Generate deterministic stars matching Java (seed 10842)
     std::srand(10842);
 
@@ -403,6 +409,52 @@ void LevelRenderer::renderStars() {
         }
     }
     glEnd();
+
+    glEndList();
+}
+
+void LevelRenderer::buildSkyList() {
+    // Build sky plane display list (matches Java)
+    glNewList(skyList, GL_COMPILE);
+
+    int s = 64;
+    int d = 256 / s + 2;
+    float yy = 16.0f;
+
+    glBegin(GL_QUADS);
+    for (int xx = -s * d; xx <= s * d; xx += s) {
+        for (int zz = -s * d; zz <= s * d; zz += s) {
+            glVertex3f(static_cast<float>(xx), yy, static_cast<float>(zz));
+            glVertex3f(static_cast<float>(xx + s), yy, static_cast<float>(zz));
+            glVertex3f(static_cast<float>(xx + s), yy, static_cast<float>(zz + s));
+            glVertex3f(static_cast<float>(xx), yy, static_cast<float>(zz + s));
+        }
+    }
+    glEnd();
+
+    glEndList();
+}
+
+void LevelRenderer::buildDarkList() {
+    // Build dark plane display list (matches Java)
+    glNewList(darkList, GL_COMPILE);
+
+    int s = 64;
+    int d = 256 / s + 2;
+    float yy = -16.0f;
+
+    glBegin(GL_QUADS);
+    for (int xx = -s * d; xx <= s * d; xx += s) {
+        for (int zz = -s * d; zz <= s * d; zz += s) {
+            glVertex3f(static_cast<float>(xx + s), yy, static_cast<float>(zz));
+            glVertex3f(static_cast<float>(xx), yy, static_cast<float>(zz));
+            glVertex3f(static_cast<float>(xx), yy, static_cast<float>(zz + s));
+            glVertex3f(static_cast<float>(xx + s), yy, static_cast<float>(zz + s));
+        }
+    }
+    glEnd();
+
+    glEndList();
 }
 
 float LevelRenderer::getTimeOfDay() const {
