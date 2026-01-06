@@ -149,38 +149,89 @@ std::vector<AABB> Level::getCollisionBoxes(Entity* /*entity*/, const AABB& area)
 }
 
 HitResult Level::clip(const Vec3& start, const Vec3& end, bool stopOnLiquid) const {
-    // Ray marching through blocks
-    int x = static_cast<int>(std::floor(start.x));
-    int y = static_cast<int>(std::floor(start.y));
-    int z = static_cast<int>(std::floor(start.z));
+    // 3D DDA (Digital Differential Analyzer) raycasting
+    // Based on Java Minecraft's clip implementation
 
-    int endX = static_cast<int>(std::floor(end.x));
-    int endY = static_cast<int>(std::floor(end.y));
-    int endZ = static_cast<int>(std::floor(end.z));
+    double x = start.x;
+    double y = start.y;
+    double z = start.z;
 
-    // Simple raycast (could be optimized with DDA algorithm)
-    for (int i = 0; i < 200; i++) {  // Max iterations
-        if (x == endX && y == endY && z == endZ) break;
+    double dx = end.x - start.x;
+    double dy = end.y - start.y;
+    double dz = end.z - start.z;
 
-        Tile* tile = getTileAt(x, y, z);
+    double length = std::sqrt(dx * dx + dy * dy + dz * dz);
+    if (length < 0.0001) return HitResult();
+
+    // Normalize direction
+    dx /= length;
+    dy /= length;
+    dz /= length;
+
+    // Current block position
+    int blockX = static_cast<int>(std::floor(x));
+    int blockY = static_cast<int>(std::floor(y));
+    int blockZ = static_cast<int>(std::floor(z));
+
+    // Step direction (-1 or +1)
+    int stepX = (dx > 0) ? 1 : -1;
+    int stepY = (dy > 0) ? 1 : -1;
+    int stepZ = (dz > 0) ? 1 : -1;
+
+    // Distance to next block boundary
+    double tMaxX = dx != 0 ? ((dx > 0 ? (blockX + 1 - x) : (x - blockX)) / std::abs(dx)) : 1e30;
+    double tMaxY = dy != 0 ? ((dy > 0 ? (blockY + 1 - y) : (y - blockY)) / std::abs(dy)) : 1e30;
+    double tMaxZ = dz != 0 ? ((dz > 0 ? (blockZ + 1 - z) : (z - blockZ)) / std::abs(dz)) : 1e30;
+
+    // Distance to traverse one block
+    double tDeltaX = dx != 0 ? std::abs(1.0 / dx) : 1e30;
+    double tDeltaY = dy != 0 ? std::abs(1.0 / dy) : 1e30;
+    double tDeltaZ = dz != 0 ? std::abs(1.0 / dz) : 1e30;
+
+    Direction face = Direction::UP;
+    double traveled = 0;
+
+    // Max distance to check
+    double maxDist = length;
+
+    for (int i = 0; i < 200 && traveled < maxDist; i++) {
+        // Check current block
+        Tile* tile = getTileAt(blockX, blockY, blockZ);
         if (tile && (tile->solid || (stopOnLiquid && tile->renderShape == TileShape::LIQUID))) {
-            // Determine which face was hit
-            Direction face = Direction::UP;  // Simplified
-            Vec3 hitPos(x + 0.5, y + 0.5, z + 0.5);
-            return HitResult(x, y, z, face, hitPos);
+            // Calculate exact hit position
+            Vec3 hitPos(
+                start.x + dx * traveled,
+                start.y + dy * traveled,
+                start.z + dz * traveled
+            );
+            return HitResult(blockX, blockY, blockZ, face, hitPos);
         }
 
-        // Step to next block (simplified - should use proper DDA)
-        double dx = end.x - start.x;
-        double dy = end.y - start.y;
-        double dz = end.z - start.z;
-
-        if (std::abs(dx) > std::abs(dy) && std::abs(dx) > std::abs(dz)) {
-            x += (dx > 0) ? 1 : -1;
-        } else if (std::abs(dy) > std::abs(dz)) {
-            y += (dy > 0) ? 1 : -1;
+        // Step to next block
+        if (tMaxX < tMaxY) {
+            if (tMaxX < tMaxZ) {
+                traveled = tMaxX;
+                tMaxX += tDeltaX;
+                blockX += stepX;
+                face = (stepX > 0) ? Direction::WEST : Direction::EAST;
+            } else {
+                traveled = tMaxZ;
+                tMaxZ += tDeltaZ;
+                blockZ += stepZ;
+                face = (stepZ > 0) ? Direction::NORTH : Direction::SOUTH;
+            }
         } else {
-            z += (dz > 0) ? 1 : -1;
+            if (tMaxY < tMaxZ) {
+                traveled = tMaxY;
+                tMaxY += tDeltaY;
+                blockY += stepY;
+                face = (stepY > 0) ? Direction::DOWN : Direction::UP;
+            } else {
+                traveled = tMaxZ;
+                tMaxZ += tDeltaZ;
+                blockZ += stepZ;
+                face = (stepZ > 0) ? Direction::NORTH : Direction::SOUTH;
+            }
         }
     }
 

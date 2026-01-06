@@ -4,9 +4,11 @@
 #include "world/tile/Tile.hpp"
 #include "entity/Player.hpp"
 #include "entity/LocalPlayer.hpp"
+#include "entity/ItemEntity.hpp"
 #include "gui/Gui.hpp"
 #include "renderer/LevelRenderer.hpp"
 #include "audio/SoundEngine.hpp"
+#include "util/Mth.hpp"
 
 namespace mc {
 
@@ -193,12 +195,28 @@ bool SurvivalMode::destroyBlock(int x, int y, int z, int face) {
     Tile* tile = Tile::tiles[tileId];
     int data = level->getData(x, y, z);
 
+    // Get drop info before destroying
+    int dropId = tile ? tile->getDropId() : 0;
+    int dropCount = tile ? tile->getDropCount() : 0;
+
     // Call parent destroy
     bool changed = GameMode::destroyBlock(x, y, z, face);
 
-    // Handle tool durability and drops (simplified)
+    // Handle drops
+    if (tile && changed && dropId > 0 && dropCount > 0) {
+        // Spawn dropped item at block center with random offset
+        double dropX = x + 0.5 + (Mth::random() - 0.5) * 0.3;
+        double dropY = y + 0.5 + (Mth::random() - 0.5) * 0.3;
+        double dropZ = z + 0.5 + (Mth::random() - 0.5) * 0.3;
+
+        auto itemEntity = std::make_unique<ItemEntity>(
+            level, dropX, dropY, dropZ, dropId, dropCount, data
+        );
+        level->addEntity(std::move(itemEntity));
+    }
+
+    // Handle tool durability and special drops
     if (minecraft->player && tile && changed) {
-        // Java: if (changed && couldDestroy) Tile.tiles[t].playerDestroy(...)
         tile->playerDestroy(level, x, y, z, data);
     }
 

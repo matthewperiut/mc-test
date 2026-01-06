@@ -51,6 +51,7 @@ public:
     void render(float partialTick, int pass);
     void renderSky(float partialTick);
     void renderClouds(float partialTick);
+    void renderEntities(float partialTick);
 
     // Update chunks
     void updateDirtyChunks();
@@ -71,6 +72,13 @@ private:
     void createChunks();
     void disposeChunks();
     void sortChunks();
+
+    // Sky rendering helpers
+    void renderStars();
+    float getTimeOfDay() const;
+    void getSkyColor(float timeOfDay, float& r, float& g, float& b) const;
+    float* getSunriseColor(float timeOfDay) const;
+    float getStarBrightness(float timeOfDay) const;
 };
 
 } // namespace mc

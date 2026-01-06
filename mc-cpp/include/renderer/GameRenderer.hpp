@@ -43,6 +43,7 @@ public:
     void renderWorld(float partialTick);
     void renderHand(float partialTick);
     void renderHitOutline();
+    void renderBreakingAnimation(float progress);
     void renderGui(float partialTick);
 
     // Picking

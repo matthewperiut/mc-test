@@ -20,6 +20,7 @@ public:
     // Bind texture to a texture unit
     void bind(GLuint textureId, int unit = 0);
     void bind(const std::string& path, int unit = 0);
+    bool bindTexture(const std::string& path, int unit = 0);  // Returns false if texture not found
     void unbind(int unit = 0);
 
     // Get texture dimensions

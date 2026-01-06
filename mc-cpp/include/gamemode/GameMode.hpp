@@ -44,6 +44,9 @@ public:
 
     // Can player take damage
     virtual bool canHurtPlayer() const;
+
+    // Get current block destroy progress (0.0 to 1.0)
+    float getDestroyProgress() const { return destroyProgress; }
 };
 
 // Survival mode with time-based block breaking

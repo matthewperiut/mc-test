@@ -33,6 +33,9 @@ Player::Player(Level* level)
     setSize(0.6f, 1.8f);
     eyeHeight = 1.62f;
     stepHeight = 0.5f;
+
+    // Create inventory
+    inventory = std::make_unique<Inventory>(this);
 }
 
 void Player::tick() {

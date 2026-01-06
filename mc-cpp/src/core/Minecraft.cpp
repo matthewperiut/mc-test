@@ -10,6 +10,7 @@
 #include "gui/Gui.hpp"
 #include "gui/Screen.hpp"
 #include "gamemode/GameMode.hpp"
+#include "item/Inventory.hpp"
 #include "phys/Vec3.hpp"
 #include "phys/AABB.hpp"
 
@@ -180,8 +181,8 @@ void Minecraft::initGL() {
 }
 
 void Minecraft::initWorld() {
-    // Create level
-    createLevel(256, 128, 256);
+    // Create level (128x128x128 for faster loading)
+    createLevel(128, 128, 128);
 
     // Create game mode (survival by default)
     gameMode = std::make_unique<SurvivalMode>(this);
@@ -361,23 +362,33 @@ void Minecraft::handleInput() {
         if (placeCooldown > 0) placeCooldown--;
 
         if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS && placeCooldown == 0) {
-            if (gameRenderer->hitResult.isTile()) {
-                int x = gameRenderer->hitResult.x;
-                int y = gameRenderer->hitResult.y;
-                int z = gameRenderer->hitResult.z;
+            if (gameRenderer->hitResult.isTile() && player->inventory) {
+                // Get currently selected item
+                ItemStack& held = player->inventory->getSelected();
+                if (!held.isEmpty() && held.id > 0 && held.id < 256) {
+                    int x = gameRenderer->hitResult.x;
+                    int y = gameRenderer->hitResult.y;
+                    int z = gameRenderer->hitResult.z;
 
-                // Offset by face direction
-                switch (gameRenderer->hitResult.face) {
-                    case Direction::DOWN:  y--; break;
-                    case Direction::UP:    y++; break;
-                    case Direction::NORTH: z--; break;
-                    case Direction::SOUTH: z++; break;
-                    case Direction::WEST:  x--; break;
-                    case Direction::EAST:  x++; break;
+                    // Offset by face direction
+                    switch (gameRenderer->hitResult.face) {
+                        case Direction::DOWN:  y--; break;
+                        case Direction::UP:    y++; break;
+                        case Direction::NORTH: z--; break;
+                        case Direction::SOUTH: z++; break;
+                        case Direction::WEST:  x--; break;
+                        case Direction::EAST:  x++; break;
+                    }
+
+                    // Place the block
+                    if (player->placeBlock(x, y, z, 0, held.id)) {
+                        // Consume item (unless in creative mode)
+                        if (!player->creative) {
+                            held.remove(1);
+                        }
+                    }
+                    placeCooldown = 4;  // 4 tick cooldown
                 }
-
-                player->placeBlock(x, y, z, 0, Tile::STONE);
-                placeCooldown = 4;  // 4 tick cooldown
             }
         }
     }
@@ -408,6 +419,17 @@ void Minecraft::onKeyPress(int key, int scancode, int action, int mods) {
             case GLFW_KEY_F11:
                 // Toggle fullscreen
                 break;
+
+            // Number keys 1-9 for hotbar slot selection (matching Java)
+            case GLFW_KEY_1: if (player) player->selectedSlot = 0; break;
+            case GLFW_KEY_2: if (player) player->selectedSlot = 1; break;
+            case GLFW_KEY_3: if (player) player->selectedSlot = 2; break;
+            case GLFW_KEY_4: if (player) player->selectedSlot = 3; break;
+            case GLFW_KEY_5: if (player) player->selectedSlot = 4; break;
+            case GLFW_KEY_6: if (player) player->selectedSlot = 5; break;
+            case GLFW_KEY_7: if (player) player->selectedSlot = 6; break;
+            case GLFW_KEY_8: if (player) player->selectedSlot = 7; break;
+            case GLFW_KEY_9: if (player) player->selectedSlot = 8; break;
         }
     }
 
@@ -444,11 +466,13 @@ void Minecraft::onMouseScroll(double xoffset, double yoffset) {
         currentScreen->mouseScrolled(xoffset, yoffset);
     }
 
-    // Change selected hotbar slot
-    if (player && !currentScreen) {
-        player->selectedSlot -= static_cast<int>(yoffset);
-        if (player->selectedSlot < 0) player->selectedSlot = 8;
-        if (player->selectedSlot > 8) player->selectedSlot = 0;
+    // Change selected hotbar slot (Java: scroll down = next slot, scroll up = prev slot)
+    if (player && !currentScreen && mouseHandler.isGrabbed()) {
+        int scroll = static_cast<int>(yoffset);
+        player->selectedSlot -= scroll;
+        // Wrap around
+        while (player->selectedSlot < 0) player->selectedSlot += 9;
+        while (player->selectedSlot > 8) player->selectedSlot -= 9;
     }
 }
 

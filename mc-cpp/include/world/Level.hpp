@@ -48,6 +48,9 @@ public:
     long long worldTime;
     int spawnX, spawnY, spawnZ;
 
+    // Time of day (0.0 to 1.0, where 0.0 = sunrise, 0.25 = noon, 0.5 = sunset, 0.75 = midnight)
+    float getTimeOfDay() const { return static_cast<float>(worldTime % 24000) / 24000.0f; }
+
     // Listeners
     std::vector<LevelListener*> listeners;
 

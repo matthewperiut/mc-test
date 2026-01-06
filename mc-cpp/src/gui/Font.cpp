@@ -12,29 +12,47 @@ Font::Font()
 }
 
 void Font::loadCharWidths() {
-    // Default character widths (most are 6 pixels for Minecraft font)
+    // Default character widths - Java uses rightmost_column + 2
+    // Most characters use 6 columns (0-5), so width = 5 + 2 = 7
     for (int i = 0; i < 256; i++) {
         charWidths[i] = 6;
     }
 
-    // Space is narrower
+    // Space (character 32) - Java hardcodes this to 4
     charWidths[' '] = 4;
 
-    // Some punctuation
-    charWidths['.'] = 2;
-    charWidths[','] = 2;
-    charWidths['!'] = 2;
-    charWidths['\''] = 2;
-    charWidths[':'] = 2;
-    charWidths[';'] = 2;
-    charWidths['|'] = 2;
-    charWidths['i'] = 2;
-    charWidths['l'] = 3;
-    charWidths['I'] = 4;
+    // Digits 0-9 typically use 5 columns (0-4), width = 4 + 2 = 6
+    for (int i = '0'; i <= '9'; i++) {
+        charWidths[i] = 6;
+    }
+    // '1' is narrower
+    charWidths['1'] = 6;
+
+    // Punctuation - narrower characters
+    charWidths['!'] = 3;  // Uses 1 column, width = 0 + 2 = 2, but +1 for visible
+    charWidths['.'] = 3;
+    charWidths[','] = 3;
+    charWidths['\''] = 4;
+    charWidths[':'] = 3;
+    charWidths[';'] = 3;
+    charWidths['`'] = 4;
+    charWidths['|'] = 4;
+
+    // Lowercase narrow characters
+    charWidths['i'] = 4;
+    charWidths['l'] = 4;
+    charWidths['t'] = 5;
+
+    // Uppercase narrow
+    charWidths['I'] = 5;
 
     // Wider characters
-    charWidths['@'] = 7;
-    charWidths['~'] = 7;
+    charWidths['@'] = 8;
+    charWidths['~'] = 8;
+    charWidths['m'] = 7;
+    charWidths['w'] = 7;
+    charWidths['M'] = 7;
+    charWidths['W'] = 7;
 }
 
 void Font::init() {
@@ -77,7 +95,8 @@ void Font::draw(const std::string& text, int x, int y, int color) {
         }
 
         drawChar(c, xPos, yPos, color);
-        xPos += charWidths[static_cast<unsigned char>(c)] + 1;
+        // Java's charWidths already include spacing (rightmost_column + 2)
+        xPos += charWidths[static_cast<unsigned char>(c)];
     }
 
     glColor4f(1, 1, 1, 1);
@@ -109,7 +128,7 @@ int Font::getWidth(const std::string& text) const {
             width = 0;
             continue;
         }
-        width += charWidths[static_cast<unsigned char>(c)] + 1;
+        width += charWidths[static_cast<unsigned char>(c)];
     }
 
     return std::max(maxWidth, width);
@@ -118,23 +137,25 @@ int Font::getWidth(const std::string& text) const {
 void Font::drawChar(char c, float x, float y, int /*color*/) {
     unsigned char uc = static_cast<unsigned char>(c);
 
-    // Font texture is 16x16 characters
-    int charX = uc % 16;
-    int charY = uc / 16;
+    // Font texture is 128x128 pixels with 16x16 grid of 8x8 characters
+    // Match Java's calculation exactly
+    int ix = (uc % 16) * 8;  // Pixel X position in 128px texture
+    int iy = (uc / 16) * 8;  // Pixel Y position in 128px texture
 
-    float u0 = charX / 16.0f;
-    float v0 = charY / 16.0f;
-    float u1 = (charX + 1) / 16.0f;
-    float v1 = (charY + 1) / 16.0f;
+    // Java uses 7.99F to avoid texture bleeding at edges
+    float s = 7.99f;
 
-    float w = static_cast<float>(charWidth);
-    float h = static_cast<float>(charHeight);
+    float u0 = static_cast<float>(ix) / 128.0f;
+    float v0 = static_cast<float>(iy) / 128.0f;
+    float u1 = (static_cast<float>(ix) + s) / 128.0f;
+    float v1 = (static_cast<float>(iy) + s) / 128.0f;
 
+    // Match Java's vertex order exactly
     glBegin(GL_QUADS);
-    glTexCoord2f(u0, v0); glVertex2f(x, y);
-    glTexCoord2f(u0, v1); glVertex2f(x, y + h);
-    glTexCoord2f(u1, v1); glVertex2f(x + w, y + h);
-    glTexCoord2f(u1, v0); glVertex2f(x + w, y);
+    glTexCoord2f(u0, v1); glVertex2f(x, y + s);          // bottom-left
+    glTexCoord2f(u1, v1); glVertex2f(x + s, y + s);      // bottom-right
+    glTexCoord2f(u1, v0); glVertex2f(x + s, y);          // top-right
+    glTexCoord2f(u0, v0); glVertex2f(x, y);              // top-left
     glEnd();
 }
 

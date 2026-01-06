@@ -1,8 +1,10 @@
 #pragma once
 
 #include "entity/Entity.hpp"
+#include "item/Inventory.hpp"
 #include <string>
 #include <array>
+#include <memory>
 
 namespace mc {
 
@@ -23,8 +25,9 @@ public:
     bool flying;
     bool creative;
 
-    // Inventory (simplified - would be a separate class)
-    int selectedSlot;
+    // Inventory
+    std::unique_ptr<Inventory> inventory;
+    int selectedSlot;  // Convenience accessor (also in inventory)
 
     // Arm swing animation
     float swingProgress;

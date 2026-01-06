@@ -5,6 +5,7 @@
 #include "renderer/Textures.hpp"
 #include "entity/LocalPlayer.hpp"
 #include "world/Level.hpp"
+#include "gamemode/GameMode.hpp"
 #include "util/Mth.hpp"
 #include <GL/glew.h>
 
@@ -118,7 +119,20 @@ void GameRenderer::applyBobbing(float partialTick) {
 }
 
 void GameRenderer::setupFog() {
-    // Calculate fog based on render distance
+    // Calculate fog color based on time of day (matching Java Dimension.getFogColor)
+    if (minecraft && minecraft->level) {
+        float timeOfDay = minecraft->level->getTimeOfDay();
+        float brightness = std::cos(timeOfDay * 3.14159265f * 2.0f) * 2.0f + 0.5f;
+        brightness = std::max(0.0f, std::min(1.0f, brightness));
+
+        // Java fog base color: (0.7529412, 0.84705883, 1.0)
+        // Multiplied by (brightness * 0.94 + 0.06) for R/G, (brightness * 0.91 + 0.09) for B
+        fogRed = 0.7529412f * (brightness * 0.94f + 0.06f);
+        fogGreen = 0.84705883f * (brightness * 0.94f + 0.06f);
+        fogBlue = 1.0f * (brightness * 0.91f + 0.09f);
+    }
+
+    // Calculate fog distance based on render distance
     int renderDist = minecraft->options.renderDistance;
     float distMultiplier = 1.0f - renderDist * 0.2f;
 
@@ -198,12 +212,23 @@ void GameRenderer::renderWorld(float partialTick) {
     // Render sky
     levelRenderer->renderSky(partialTick);
 
+    // Re-bind terrain texture after sky rendering (sky binds sun/moon textures)
+    Textures::getInstance().bind("resources/terrain.png");
+
     // Render opaque geometry
     levelRenderer->render(partialTick, 0);
 
     // Render selection outline
     if (hitResult.isTile()) {
         renderHitOutline();
+
+        // Render block breaking animation
+        if (minecraft->gameMode) {
+            float destroyProgress = minecraft->gameMode->getDestroyProgress();
+            if (destroyProgress > 0.0f) {
+                renderBreakingAnimation(destroyProgress);
+            }
+        }
     }
 
     // Render transparent geometry (water)
@@ -213,8 +238,117 @@ void GameRenderer::renderWorld(float partialTick) {
     levelRenderer->render(partialTick, 1);
     glDisable(GL_BLEND);
 
+    // Render dropped items and entities
+    levelRenderer->renderEntities(partialTick);
+
     // Render clouds
     levelRenderer->renderClouds(partialTick);
+}
+
+void GameRenderer::renderBreakingAnimation(float progress) {
+    if (!hitResult.isTile()) return;
+
+    // Calculate break texture index (240-249 in terrain.png)
+    int breakStage = static_cast<int>(progress * 10.0f);
+    if (breakStage > 9) breakStage = 9;
+    int textureIndex = 240 + breakStage;
+
+    // Calculate UV coordinates for break texture in terrain.png (16x16 grid)
+    float texU = static_cast<float>(textureIndex % 16) / 16.0f;
+    float texV = static_cast<float>(textureIndex / 16) / 16.0f;
+    float texSize = 1.0f / 16.0f;
+
+    float x = static_cast<float>(hitResult.x);
+    float y = static_cast<float>(hitResult.y);
+    float z = static_cast<float>(hitResult.z);
+
+    // Slightly expand the crack overlay to prevent z-fighting
+    float e = 0.002f;
+
+    // Setup for rendering crack overlay (matching Java)
+    Textures::getInstance().bind("resources/terrain.png");
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_DST_COLOR, GL_SRC_COLOR);  // Multiplicative blending
+    glDisable(GL_ALPHA_TEST);
+    glDisable(GL_CULL_FACE);  // Render both sides
+    glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+    glDepthMask(GL_FALSE);  // Don't write to depth buffer
+
+    // Use polygon offset to prevent z-fighting
+    glPolygonOffset(-3.0f, -3.0f);
+    glEnable(GL_POLYGON_OFFSET_FILL);
+
+    glBegin(GL_QUADS);
+
+    // Bottom face (y = y) - render outward (visible from below)
+    glTexCoord2f(texU, texV + texSize);
+    glVertex3f(x - e, y - e, z + 1 + e);
+    glTexCoord2f(texU + texSize, texV + texSize);
+    glVertex3f(x + 1 + e, y - e, z + 1 + e);
+    glTexCoord2f(texU + texSize, texV);
+    glVertex3f(x + 1 + e, y - e, z - e);
+    glTexCoord2f(texU, texV);
+    glVertex3f(x - e, y - e, z - e);
+
+    // Top face (y = y + 1) - render outward (visible from above)
+    glTexCoord2f(texU, texV);
+    glVertex3f(x - e, y + 1 + e, z - e);
+    glTexCoord2f(texU + texSize, texV);
+    glVertex3f(x + 1 + e, y + 1 + e, z - e);
+    glTexCoord2f(texU + texSize, texV + texSize);
+    glVertex3f(x + 1 + e, y + 1 + e, z + 1 + e);
+    glTexCoord2f(texU, texV + texSize);
+    glVertex3f(x - e, y + 1 + e, z + 1 + e);
+
+    // North face (z = z) - visible from north
+    glTexCoord2f(texU + texSize, texV);
+    glVertex3f(x - e, y + 1 + e, z - e);
+    glTexCoord2f(texU, texV);
+    glVertex3f(x + 1 + e, y + 1 + e, z - e);
+    glTexCoord2f(texU, texV + texSize);
+    glVertex3f(x + 1 + e, y - e, z - e);
+    glTexCoord2f(texU + texSize, texV + texSize);
+    glVertex3f(x - e, y - e, z - e);
+
+    // South face (z = z + 1) - visible from south
+    glTexCoord2f(texU, texV);
+    glVertex3f(x - e, y + 1 + e, z + 1 + e);
+    glTexCoord2f(texU, texV + texSize);
+    glVertex3f(x - e, y - e, z + 1 + e);
+    glTexCoord2f(texU + texSize, texV + texSize);
+    glVertex3f(x + 1 + e, y - e, z + 1 + e);
+    glTexCoord2f(texU + texSize, texV);
+    glVertex3f(x + 1 + e, y + 1 + e, z + 1 + e);
+
+    // West face (x = x) - visible from west
+    glTexCoord2f(texU + texSize, texV);
+    glVertex3f(x - e, y + 1 + e, z + 1 + e);
+    glTexCoord2f(texU, texV);
+    glVertex3f(x - e, y + 1 + e, z - e);
+    glTexCoord2f(texU, texV + texSize);
+    glVertex3f(x - e, y - e, z - e);
+    glTexCoord2f(texU + texSize, texV + texSize);
+    glVertex3f(x - e, y - e, z + 1 + e);
+
+    // East face (x = x + 1) - visible from east
+    glTexCoord2f(texU, texV);
+    glVertex3f(x + 1 + e, y + 1 + e, z - e);
+    glTexCoord2f(texU + texSize, texV);
+    glVertex3f(x + 1 + e, y + 1 + e, z + 1 + e);
+    glTexCoord2f(texU + texSize, texV + texSize);
+    glVertex3f(x + 1 + e, y - e, z + 1 + e);
+    glTexCoord2f(texU, texV + texSize);
+    glVertex3f(x + 1 + e, y - e, z - e);
+
+    glEnd();
+
+    glPolygonOffset(0.0f, 0.0f);
+    glDisable(GL_POLYGON_OFFSET_FILL);
+    glDepthMask(GL_TRUE);
+    glEnable(GL_CULL_FACE);
+    glDisable(GL_BLEND);
+    glEnable(GL_ALPHA_TEST);
+    glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 }
 
 void GameRenderer::renderHitOutline() {

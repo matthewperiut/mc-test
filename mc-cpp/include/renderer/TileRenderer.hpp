@@ -23,6 +23,12 @@ public:
     bool renderTile(Tile* tile, int x, int y, int z);
     bool renderTileInWorld(int x, int y, int z);
 
+    // Render a standalone block for items (no level context, all faces)
+    void renderBlockItem(Tile* tile, float scale);
+
+    // Render a tile for GUI display (matches Java TileRenderer.renderTile(Tile, int))
+    void renderTileForGUI(Tile* tile, int data = 0);
+
     // Render specific shapes
     void renderCube(Tile* tile, int x, int y, int z);
     void renderCross(Tile* tile, int x, int y, int z);

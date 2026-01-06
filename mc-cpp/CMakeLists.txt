@@ -59,6 +59,7 @@ set(ENTITY_SOURCES
     src/entity/Entity.cpp
     src/entity/Player.cpp
     src/entity/LocalPlayer.cpp
+    src/entity/ItemEntity.cpp
 )
 
 set(AUDIO_SOURCES
@@ -69,6 +70,10 @@ set(GUI_SOURCES
     src/gui/Font.cpp
     src/gui/Gui.cpp
     src/gui/Screen.cpp
+)
+
+set(ITEM_SOURCES
+    src/item/Inventory.cpp
 )
 
 set(GAMEMODE_SOURCES
@@ -86,6 +91,7 @@ set(ALL_SOURCES
     ${ENTITY_SOURCES}
     ${AUDIO_SOURCES}
     ${GUI_SOURCES}
+    ${ITEM_SOURCES}
     ${GAMEMODE_SOURCES}
 )
 

@@ -88,6 +88,15 @@ void Textures::bind(const std::string& path, int unit) {
     bind(textureId, unit);
 }
 
+bool Textures::bindTexture(const std::string& path, int unit) {
+    GLuint textureId = loadTexture(path);
+    if (textureId == 0) {
+        return false;
+    }
+    bind(textureId, unit);
+    return true;
+}
+
 void Textures::unbind(int unit) {
     glActiveTexture(GL_TEXTURE0 + unit);
     glBindTexture(GL_TEXTURE_2D, 0);

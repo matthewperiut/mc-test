@@ -3,6 +3,10 @@
 #include "entity/LocalPlayer.hpp"
 #include "renderer/LevelRenderer.hpp"
 #include "renderer/Textures.hpp"
+#include "renderer/TileRenderer.hpp"
+#include "renderer/Tesselator.hpp"
+#include "world/tile/Tile.hpp"
+#include "item/Inventory.hpp"
 #include <GL/glew.h>
 #include <sstream>
 #include <iomanip>
@@ -36,17 +40,18 @@ void Gui::render(float partialTick) {
 
     setupOrtho();
 
+    // Set up proper 2D rendering state - disable all 3D effects
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_LIGHTING);
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_FOG);
+    glDisable(GL_ALPHA_TEST);
+    glEnable(GL_TEXTURE_2D);
     glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    // === Render HUD matching Java Gui.render() exactly ===
-
-    // Reset color
+    // Reset color to white with full opacity
     glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-
-    // Bind gui.png and render hotbar
-    Textures::getInstance().bind("resources/gui/gui.png");
 
     LocalPlayer* player = minecraft->player;
     if (player) {
@@ -54,11 +59,79 @@ void Gui::render(float partialTick) {
 
         blitOffset = -90.0f;
 
+        // Bind gui.png and render hotbar
+        Textures::getInstance().bind("resources/gui/gui.png");
+
         // Hotbar background (Java: this.blit(var6 / 2 - 91, var7 - 22, 0, 0, 182, 22))
         blit(screenWidth / 2 - 91, screenHeight - 22, 0, 0, 182, 22);
 
         // Selection highlight (Java: this.blit(var6 / 2 - 91 - 1 + var11.selected * 20, var7 - 22 - 1, 0, 22, 24, 22))
         blit(screenWidth / 2 - 91 - 1 + selectedSlot * 20, screenHeight - 22 - 1, 0, 22, 24, 22);
+
+        // Render items in hotbar slots as 3D blocks (like Java ItemRenderer.renderGuiItem)
+        if (player->inventory) {
+            TileRenderer tileRenderer;
+
+            for (int i = 0; i < 9; i++) {
+                const ItemStack& item = player->inventory->getItem(i);
+                if (!item.isEmpty() && item.id > 0 && item.id < 256) {
+                    Tile* tile = Tile::tiles[item.id];
+                    if (tile) {
+                        int slotX = screenWidth / 2 - 91 + 3 + i * 20;
+                        int slotY = screenHeight - 19;
+
+                        // Bind terrain texture
+                        Textures::getInstance().bind("resources/terrain.png");
+
+                        // Enable depth test for proper 3D rendering
+                        glEnable(GL_DEPTH_TEST);
+                        glClear(GL_DEPTH_BUFFER_BIT);
+
+                        glPushMatrix();
+
+                        // Java ItemRenderer.renderGuiItem() exact transformations:
+                        // GL11.glTranslatef((float)(x - 2), (float)(y + 3), 0.0F);
+                        // GL11.glScalef(10.0F, 10.0F, 10.0F);
+                        // GL11.glTranslatef(1.0F, 0.5F, 8.0F);
+                        // GL11.glRotatef(210.0F, 1.0F, 0.0F, 0.0F);
+                        // GL11.glRotatef(45.0F, 0.0F, 1.0F, 0.0F);
+                        glTranslatef(static_cast<float>(slotX - 2), static_cast<float>(slotY + 3), 0.0f);
+                        glScalef(10.0f, 10.0f, 10.0f);
+                        glTranslatef(1.0f, 0.5f, 8.0f);
+                        // Flip rotation to show front of block instead of back
+                        glRotatef(-210.0f, 1.0f, 0.0f, 0.0f);
+                        glRotatef(-45.0f, 0.0f, 1.0f, 0.0f);
+
+                        // Reset color (Java: GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F))
+                        glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+
+                        // Render 3D block using Java-matching method
+                        tileRenderer.renderTileForGUI(tile, 0);
+
+                        glPopMatrix();
+                        glDisable(GL_DEPTH_TEST);
+
+                        // Render stack count if > 1 (Java renderGuiItemDecorations)
+                        if (item.count > 1) {
+                            std::string countStr = std::to_string(item.count);
+                            // Position in bottom-right of slot
+                            // Slot is 16x16, text should be offset to bottom-right corner
+                            int textX = slotX + 16 - font.getWidth(countStr);
+                            int textY = slotY + 9;
+
+                            // Java disables lighting and depth test for text
+                            glDisable(GL_LIGHTING);
+                            glDisable(GL_DEPTH_TEST);
+                            font.drawShadow(countStr, textX, textY, 0xFFFFFF);
+                            glEnable(GL_DEPTH_TEST);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Enable cull face at end (Java: GL11.glEnable(2884))
+        glEnable(GL_CULL_FACE);
     }
 
     // Bind icons.png for crosshair and hearts
@@ -87,8 +160,12 @@ void Gui::render(float partialTick) {
         font.drawShadow("Minecraft Beta 1.2_02 (C++)", 2, 2, 0xFFFFFF);
     }
 
+    // Restore states for world rendering
     glDisable(GL_BLEND);
     glEnable(GL_DEPTH_TEST);
+    glEnable(GL_CULL_FACE);
+    glEnable(GL_FOG);
+    glEnable(GL_ALPHA_TEST);
 
     restoreProjection();
 }
@@ -97,11 +174,14 @@ void Gui::setupOrtho() {
     glMatrixMode(GL_PROJECTION);
     glPushMatrix();
     glLoadIdentity();
-    glOrtho(0, screenWidth, screenHeight, 0, -1, 1);
+    // Match Java exactly: near=1000, far=3000
+    glOrtho(0, screenWidth, screenHeight, 0, 1000.0, 3000.0);
 
     glMatrixMode(GL_MODELVIEW);
     glPushMatrix();
     glLoadIdentity();
+    // Java does this translation after ortho setup - critical for correct 3D rendering
+    glTranslatef(0.0f, 0.0f, -2000.0f);
 }
 
 void Gui::restoreProjection() {
