@@ -325,6 +325,51 @@ std::vector<Entity*> Level::getEntitiesInArea(const AABB& area) const {
     return result;
 }
 
+bool Level::isUnobstructed(const AABB& area) const {
+    // Match Java Level.isUnobstructed() exactly
+    // Returns false if any entity with blocksBuilding=true is in the area
+    std::vector<Entity*> entitiesInArea = getEntitiesInArea(area);
+
+    for (Entity* entity : entitiesInArea) {
+        if (!entity->removed && entity->blocksBuilding) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool Level::mayPlace(int tileId, int x, int y, int z, bool ignoreBoundingBox) const {
+    // Match Java Level.mayPlace() exactly
+    if (!isInBounds(x, y, z)) return false;
+
+    int existingTile = getTile(x, y, z);
+    Tile* existing = (existingTile >= 0 && existingTile < 256) ? Tile::tiles[existingTile] : nullptr;
+    Tile* newTile = (tileId >= 0 && tileId < 256) ? Tile::tiles[tileId] : nullptr;
+
+    if (!newTile) return false;
+
+    // Get the collision box of the tile to be placed
+    AABB tileBox = newTile->getCollisionBox(x, y, z);
+
+    // If not ignoring bounding box, check for entity collisions
+    if (!ignoreBoundingBox && tileBox.x1 > tileBox.x0) {
+        if (!isUnobstructed(tileBox)) {
+            return false;
+        }
+    }
+
+    // Allow placing in water, lava, fire, or snow layer
+    if (existingTile == Tile::WATER || existingTile == Tile::STILL_WATER ||
+        existingTile == Tile::LAVA || existingTile == Tile::STILL_LAVA ||
+        existingTile == Tile::FIRE || existingTile == Tile::SNOW_LAYER) {
+        return true;
+    }
+
+    // Otherwise, require air (or no existing tile)
+    return tileId > 0 && existing == nullptr;
+}
+
 void Level::tick() {
     worldTime++;
     tickEntities();

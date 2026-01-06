@@ -8,6 +8,7 @@
 #include "gamemode/GameMode.hpp"
 #include "util/Mth.hpp"
 #include <GL/glew.h>
+#include <cstdio>
 
 namespace mc {
 
@@ -354,55 +355,78 @@ void GameRenderer::renderBreakingAnimation(float progress) {
 void GameRenderer::renderHitOutline() {
     if (!hitResult.isTile()) return;
 
-    glDisable(GL_TEXTURE_2D);
-    glDisable(GL_DEPTH_TEST);
+    // Forcefully disable all client states that might interfere
+    glDisableClientState(GL_VERTEX_ARRAY);
+    glDisableClientState(GL_COLOR_ARRAY);
+    glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+    glDisableClientState(GL_NORMAL_ARRAY);
+
+    // GL state setup (matching Java)
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    float x = static_cast<float>(hitResult.x);
-    float y = static_cast<float>(hitResult.y);
-    float z = static_cast<float>(hitResult.z);
-
-    float expand = 0.002f;
-
-    glColor4f(0.0f, 0.0f, 0.0f, 0.4f);
+    glDisable(GL_TEXTURE_2D);
+    glDisable(GL_LIGHTING);
+    glDisable(GL_ALPHA_TEST);  // Disable alpha test so low alpha values aren't discarded
+    glDepthMask(GL_FALSE);  // Don't write to depth buffer
+    glDepthRange(0.0, 0.9999);  // Slight bias toward camera
     glLineWidth(2.0f);
 
-    glBegin(GL_LINE_LOOP);
+    // Black, 40% alpha (matching Java)
+    glColor4f(0.0f, 0.0f, 0.0f, 0.4f);
+
+    // Get block coordinates
+    int bx = hitResult.x;
+    int by = hitResult.y;
+    int bz = hitResult.z;
+
+    // Expansion to prevent z-fighting (Java uses 0.002F)
+    float ss = 0.002f;
+
+    // Get the tile's AABB and expand it
+    float x0 = static_cast<float>(bx) - ss;
+    float y0 = static_cast<float>(by) - ss;
+    float z0 = static_cast<float>(bz) - ss;
+    float x1 = static_cast<float>(bx) + 1.0f + ss;
+    float y1 = static_cast<float>(by) + 1.0f + ss;
+    float z1 = static_cast<float>(bz) + 1.0f + ss;
+
+    // Draw with immediate mode
     // Bottom face
-    glVertex3f(x - expand, y - expand, z - expand);
-    glVertex3f(x + 1 + expand, y - expand, z - expand);
-    glVertex3f(x + 1 + expand, y - expand, z + 1 + expand);
-    glVertex3f(x - expand, y - expand, z + 1 + expand);
+    glBegin(GL_LINE_STRIP);
+    glVertex3f(x0, y0, z0);
+    glVertex3f(x1, y0, z0);
+    glVertex3f(x1, y0, z1);
+    glVertex3f(x0, y0, z1);
+    glVertex3f(x0, y0, z0);
     glEnd();
 
-    glBegin(GL_LINE_LOOP);
     // Top face
-    glVertex3f(x - expand, y + 1 + expand, z - expand);
-    glVertex3f(x + 1 + expand, y + 1 + expand, z - expand);
-    glVertex3f(x + 1 + expand, y + 1 + expand, z + 1 + expand);
-    glVertex3f(x - expand, y + 1 + expand, z + 1 + expand);
+    glBegin(GL_LINE_STRIP);
+    glVertex3f(x0, y1, z0);
+    glVertex3f(x1, y1, z0);
+    glVertex3f(x1, y1, z1);
+    glVertex3f(x0, y1, z1);
+    glVertex3f(x0, y1, z0);
     glEnd();
 
-    glBegin(GL_LINES);
     // Vertical edges
-    glVertex3f(x - expand, y - expand, z - expand);
-    glVertex3f(x - expand, y + 1 + expand, z - expand);
-
-    glVertex3f(x + 1 + expand, y - expand, z - expand);
-    glVertex3f(x + 1 + expand, y + 1 + expand, z - expand);
-
-    glVertex3f(x + 1 + expand, y - expand, z + 1 + expand);
-    glVertex3f(x + 1 + expand, y + 1 + expand, z + 1 + expand);
-
-    glVertex3f(x - expand, y - expand, z + 1 + expand);
-    glVertex3f(x - expand, y + 1 + expand, z + 1 + expand);
+    glBegin(GL_LINES);
+    glVertex3f(x0, y0, z0);
+    glVertex3f(x0, y1, z0);
+    glVertex3f(x1, y0, z0);
+    glVertex3f(x1, y1, z0);
+    glVertex3f(x1, y0, z1);
+    glVertex3f(x1, y1, z1);
+    glVertex3f(x0, y0, z1);
+    glVertex3f(x0, y1, z1);
     glEnd();
 
-    glLineWidth(1.0f);
-    glDisable(GL_BLEND);
-    glEnable(GL_DEPTH_TEST);
+    // Restore state
+    glDepthRange(0.0, 1.0);
+    glDepthMask(GL_TRUE);
     glEnable(GL_TEXTURE_2D);
+    glEnable(GL_ALPHA_TEST);
+    glDisable(GL_BLEND);
 }
 
 void GameRenderer::renderHand(float /*partialTick*/) {

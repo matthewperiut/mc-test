@@ -9,6 +9,8 @@
 #include "audio/SoundEngine.hpp"
 #include "gui/Gui.hpp"
 #include "gui/Screen.hpp"
+#include "gui/InventoryScreen.hpp"
+#include "gui/PauseScreen.hpp"
 #include "gamemode/GameMode.hpp"
 #include "item/Inventory.hpp"
 #include "phys/Vec3.hpp"
@@ -70,6 +72,8 @@ Minecraft::Minecraft()
     , fps(0)
     , fpsCounter(0)
     , lastFpsTime(0)
+    , ticks(0)
+    , lastClickTick(0)
     , showDebug(false)
 {
     minecraft = this;
@@ -257,6 +261,8 @@ void Minecraft::run() {
 }
 
 void Minecraft::tick() {
+    ticks++;  // Increment tick counter (Java: this.ticks++)
+
     if (paused) return;
 
     // Tick level
@@ -298,11 +304,11 @@ void Minecraft::render(float partialTick) {
 
     // Render screen overlay
     if (currentScreen) {
-        currentScreen->render(
-            static_cast<int>(mouseHandler.getX()),
-            static_cast<int>(mouseHandler.getY()),
-            partialTick
-        );
+        // Scale mouse coordinates by GUI scale
+        int scale = gui->getGuiScale();
+        int scaledMouseX = static_cast<int>(mouseHandler.getX()) / scale;
+        int scaledMouseY = static_cast<int>(mouseHandler.getY()) / scale;
+        currentScreen->render(scaledMouseX, scaledMouseY, partialTick);
     }
 }
 
@@ -357,11 +363,17 @@ void Minecraft::handleInput() {
 
         wasBreaking = isBreaking;
 
-        // Right click - place block (with cooldown)
-        static int placeCooldown = 0;
-        if (placeCooldown > 0) placeCooldown--;
+        // Right click - place block
+        // Java has TWO code paths:
+        // 1. Mouse.getEventButton() == 1 && Mouse.getEventButtonState() -> immediate on NEW click
+        // 2. Mouse.isButtonDown(1) && (ticks - lastClickTick) >= 5 -> repeat while HELD
+        static bool wasRightPressed = false;
+        bool isRightPressed = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
+        bool justClicked = isRightPressed && !wasRightPressed;  // New click event
+        bool heldLongEnough = isRightPressed && (ticks - lastClickTick) >= 5;  // Held repeat
 
-        if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS && placeCooldown == 0) {
+        // Place block on new click (immediate) OR held repeat (5 tick cooldown)
+        if (justClicked || heldLongEnough) {
             if (gameRenderer->hitResult.isTile() && player->inventory) {
                 // Get currently selected item
                 ItemStack& held = player->inventory->getSelected();
@@ -370,7 +382,7 @@ void Minecraft::handleInput() {
                     int y = gameRenderer->hitResult.y;
                     int z = gameRenderer->hitResult.z;
 
-                    // Offset by face direction
+                    // Offset by face direction (matching Java TileItem.useOn)
                     switch (gameRenderer->hitResult.face) {
                         case Direction::DOWN:  y--; break;
                         case Direction::UP:    y++; break;
@@ -380,17 +392,23 @@ void Minecraft::handleInput() {
                         case Direction::EAST:  x++; break;
                     }
 
-                    // Place the block
-                    if (player->placeBlock(x, y, z, 0, held.id)) {
+                    // Check if block can be placed (Java: level.mayPlace())
+                    // This checks for entity collisions (can't place inside player)
+                    if (level->mayPlace(held.id, x, y, z, false)) {
+                        // Place the block
+                        level->setTile(x, y, z, held.id);
+                        player->swing();
+
                         // Consume item (unless in creative mode)
                         if (!player->creative) {
                             held.remove(1);
                         }
                     }
-                    placeCooldown = 4;  // 4 tick cooldown
+                    lastClickTick = ticks;  // Record when we clicked/placed
                 }
             }
         }
+        wasRightPressed = isRightPressed;
     }
 }
 
@@ -403,12 +421,10 @@ void Minecraft::onKeyPress(int key, int scancode, int action, int mods) {
     if (action == GLFW_PRESS) {
         switch (key) {
             case GLFW_KEY_ESCAPE:
+                // Open pause menu (matching Java)
                 if (mouseHandler.isGrabbed()) {
-                    releaseMouse();
+                    setScreen(new PauseScreen());
                     paused = true;
-                } else {
-                    grabMouse();
-                    paused = false;
                 }
                 break;
 
@@ -420,16 +436,24 @@ void Minecraft::onKeyPress(int key, int scancode, int action, int mods) {
                 // Toggle fullscreen
                 break;
 
+            case GLFW_KEY_E:
+                // Open inventory (matching Java)
+                if (mouseHandler.isGrabbed()) {
+                    releaseMouse();
+                    setScreen(new InventoryScreen());
+                }
+                break;
+
             // Number keys 1-9 for hotbar slot selection (matching Java)
-            case GLFW_KEY_1: if (player) player->selectedSlot = 0; break;
-            case GLFW_KEY_2: if (player) player->selectedSlot = 1; break;
-            case GLFW_KEY_3: if (player) player->selectedSlot = 2; break;
-            case GLFW_KEY_4: if (player) player->selectedSlot = 3; break;
-            case GLFW_KEY_5: if (player) player->selectedSlot = 4; break;
-            case GLFW_KEY_6: if (player) player->selectedSlot = 5; break;
-            case GLFW_KEY_7: if (player) player->selectedSlot = 6; break;
-            case GLFW_KEY_8: if (player) player->selectedSlot = 7; break;
-            case GLFW_KEY_9: if (player) player->selectedSlot = 8; break;
+            case GLFW_KEY_1: if (player && player->inventory) { player->selectedSlot = 0; player->inventory->selected = 0; } break;
+            case GLFW_KEY_2: if (player && player->inventory) { player->selectedSlot = 1; player->inventory->selected = 1; } break;
+            case GLFW_KEY_3: if (player && player->inventory) { player->selectedSlot = 2; player->inventory->selected = 2; } break;
+            case GLFW_KEY_4: if (player && player->inventory) { player->selectedSlot = 3; player->inventory->selected = 3; } break;
+            case GLFW_KEY_5: if (player && player->inventory) { player->selectedSlot = 4; player->inventory->selected = 4; } break;
+            case GLFW_KEY_6: if (player && player->inventory) { player->selectedSlot = 5; player->inventory->selected = 5; } break;
+            case GLFW_KEY_7: if (player && player->inventory) { player->selectedSlot = 6; player->inventory->selected = 6; } break;
+            case GLFW_KEY_8: if (player && player->inventory) { player->selectedSlot = 7; player->inventory->selected = 7; } break;
+            case GLFW_KEY_9: if (player && player->inventory) { player->selectedSlot = 8; player->inventory->selected = 8; } break;
         }
     }
 
@@ -442,22 +466,26 @@ void Minecraft::onKeyPress(int key, int scancode, int action, int mods) {
 void Minecraft::onMouseButton(int button, int action, int mods) {
     (void)mods;
 
+    // If a screen is open, forward clicks to it (don't grab mouse)
+    if (currentScreen) {
+        currentScreen->mouseClicked(button, action);
+        return;
+    }
+
+    // No screen open - handle mouse grab
     if (!mouseHandler.isGrabbed()) {
         if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
             grabMouse();
             paused = false;
         }
-        return;
-    }
-
-    if (currentScreen) {
-        currentScreen->mouseClicked(button, action);
     }
 }
 
 void Minecraft::onMouseMove(double x, double y) {
     if (currentScreen) {
-        currentScreen->mouseMoved(x, y);
+        // Scale mouse coordinates by GUI scale
+        int scale = gui ? gui->getGuiScale() : 1;
+        currentScreen->mouseMoved(x / scale, y / scale);
     }
 }
 
@@ -467,12 +495,14 @@ void Minecraft::onMouseScroll(double xoffset, double yoffset) {
     }
 
     // Change selected hotbar slot (Java: scroll down = next slot, scroll up = prev slot)
-    if (player && !currentScreen && mouseHandler.isGrabbed()) {
+    if (player && player->inventory && !currentScreen && mouseHandler.isGrabbed()) {
         int scroll = static_cast<int>(yoffset);
         player->selectedSlot -= scroll;
         // Wrap around
         while (player->selectedSlot < 0) player->selectedSlot += 9;
         while (player->selectedSlot > 8) player->selectedSlot -= 9;
+        // Sync with inventory
+        player->inventory->selected = player->selectedSlot;
     }
 }
 
@@ -495,12 +525,16 @@ void Minecraft::onResize(int width, int height) {
 void Minecraft::setScreen(Screen* screen) {
     if (currentScreen) {
         currentScreen->removed();
+        delete currentScreen;
     }
 
     currentScreen = screen;
 
     if (screen) {
-        screen->init(this, screenWidth, screenHeight);
+        // Use scaled dimensions for screen
+        int scaledWidth = gui ? gui->getScaledWidth() : screenWidth;
+        int scaledHeight = gui ? gui->getScaledHeight() : screenHeight;
+        screen->init(this, scaledWidth, scaledHeight);
         releaseMouse();
     }
 }
@@ -508,6 +542,7 @@ void Minecraft::setScreen(Screen* screen) {
 void Minecraft::closeScreen() {
     setScreen(nullptr);
     grabMouse();
+    paused = false;
 }
 
 void Minecraft::pauseGame() {

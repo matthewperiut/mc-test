@@ -49,6 +49,10 @@ public:
     float heightOffset;
     float eyeHeight;
 
+    // Block placement check (Java: blocksBuilding)
+    // If true, blocks cannot be placed inside this entity
+    bool blocksBuilding;
+
     // Reference to level
     Level* level;
 

@@ -15,6 +15,9 @@ public:
 
     int screenWidth;
     int screenHeight;
+    int scaledWidth;   // GUI-scaled width
+    int scaledHeight;  // GUI-scaled height
+    int guiScale;      // Current GUI scale factor
 
     // Break progress (from GameMode)
     float progress;
@@ -50,6 +53,12 @@ public:
     void renderCrosshair();
     void renderDebugInfo();
     void renderChat();
+
+    // Calculate GUI scale based on options
+    void calculateScale();
+    int getScaledWidth() const { return scaledWidth; }
+    int getScaledHeight() const { return scaledHeight; }
+    int getGuiScale() const { return guiScale; }
 
 protected:
     void setupOrtho();

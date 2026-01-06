@@ -33,6 +33,7 @@ Player::Player(Level* level)
     setSize(0.6f, 1.8f);
     eyeHeight = 1.62f;
     stepHeight = 0.5f;
+    blocksBuilding = true;  // Java: Mob sets this to true, prevents blocks being placed inside player
 
     // Create inventory
     inventory = std::make_unique<Inventory>(this);

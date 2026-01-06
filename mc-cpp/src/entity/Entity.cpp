@@ -28,6 +28,7 @@ Entity::Entity(Level* level)
     , removed(false)
     , heightOffset(0.0f)
     , eyeHeight(1.62f)
+    , blocksBuilding(false)  // Java: Entity sets this to false, Mob sets to true
     , level(level)
     , entityId(nextEntityId++)
 {

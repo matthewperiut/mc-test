@@ -100,6 +100,12 @@ public:
     Entity* getEntityById(int id);
     std::vector<Entity*> getEntitiesInArea(const AABB& area) const;
 
+    // Block placement checks (matching Java Level)
+    // Returns true if no entities with blocksBuilding=true are in the AABB
+    bool isUnobstructed(const AABB& area) const;
+    // Returns true if a tile can be placed at the given position
+    bool mayPlace(int tileId, int x, int y, int z, bool ignoreBoundingBox = false) const;
+
     // Ticking
     void tick();
     void tickTiles();

@@ -526,12 +526,9 @@ void LevelRenderer::renderClouds(float partialTick) {
     float h = 4.0f;    // Cloud height/thickness
     float cloudAltitude = 108.0f;  // World Y position of cloud bottom
 
-    // Cloud movement - use ticks for consistent movement
-    static unsigned long cloudTicks = 0;
-    cloudTicks++;
-
-    // Cloud drift speed (matching Java: 0.03 blocks per tick)
-    double cloudDrift = cloudTicks * 0.03;
+    // Cloud movement - use game ticks for consistent movement (matching Java)
+    // Java: (this.ticks + alpha) * 0.03F
+    double cloudDrift = (minecraft->ticks + partialTick) * 0.03;
 
     // Player position
     double baseX = player->prevX + (player->x - player->prevX) * partialTick;

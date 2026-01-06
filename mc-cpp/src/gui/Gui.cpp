@@ -1,5 +1,6 @@
 #include "gui/Gui.hpp"
 #include "core/Minecraft.hpp"
+#include "core/Options.hpp"
 #include "entity/LocalPlayer.hpp"
 #include "renderer/LevelRenderer.hpp"
 #include "renderer/Textures.hpp"
@@ -17,6 +18,9 @@ Gui::Gui(Minecraft* minecraft)
     : minecraft(minecraft)
     , screenWidth(854)
     , screenHeight(480)
+    , scaledWidth(854)
+    , scaledHeight(480)
+    , guiScale(1)
     , progress(0.0f)
     , tickCount(0)
     , guiTexture(0)
@@ -34,9 +38,39 @@ void Gui::tick() {
     tickCount++;
 }
 
-void Gui::render(float partialTick) {
+void Gui::calculateScale() {
     screenWidth = minecraft->screenWidth;
     screenHeight = minecraft->screenHeight;
+
+    int scaleSetting = minecraft->options.guiScale;
+
+    // Calculate scale factor (matching Java ScaledResolution)
+    guiScale = 1;
+
+    if (scaleSetting == 0) {
+        // Auto: find largest scale that fits
+        while (guiScale < 4 &&
+               screenWidth / (guiScale + 1) >= 320 &&
+               screenHeight / (guiScale + 1) >= 240) {
+            guiScale++;
+        }
+    } else {
+        // Use specified scale (1=Small, 2=Normal, 3=Large)
+        guiScale = scaleSetting;
+    }
+
+    // Ensure scale doesn't exceed screen size
+    while (screenWidth / guiScale < 320 || screenHeight / guiScale < 240) {
+        if (guiScale <= 1) break;
+        guiScale--;
+    }
+
+    scaledWidth = screenWidth / guiScale;
+    scaledHeight = screenHeight / guiScale;
+}
+
+void Gui::render(float partialTick) {
+    calculateScale();
 
     setupOrtho();
 
@@ -63,10 +97,10 @@ void Gui::render(float partialTick) {
         Textures::getInstance().bind("resources/gui/gui.png");
 
         // Hotbar background (Java: this.blit(var6 / 2 - 91, var7 - 22, 0, 0, 182, 22))
-        blit(screenWidth / 2 - 91, screenHeight - 22, 0, 0, 182, 22);
+        blit(scaledWidth / 2 - 91, scaledHeight - 22, 0, 0, 182, 22);
 
         // Selection highlight (Java: this.blit(var6 / 2 - 91 - 1 + var11.selected * 20, var7 - 22 - 1, 0, 22, 24, 22))
-        blit(screenWidth / 2 - 91 - 1 + selectedSlot * 20, screenHeight - 22 - 1, 0, 22, 24, 22);
+        blit(scaledWidth / 2 - 91 - 1 + selectedSlot * 20, scaledHeight - 22 - 1, 0, 22, 24, 22);
 
         // Render items in hotbar slots as 3D blocks (like Java ItemRenderer.renderGuiItem)
         if (player->inventory) {
@@ -77,8 +111,8 @@ void Gui::render(float partialTick) {
                 if (!item.isEmpty() && item.id > 0 && item.id < 256) {
                     Tile* tile = Tile::tiles[item.id];
                     if (tile) {
-                        int slotX = screenWidth / 2 - 91 + 3 + i * 20;
-                        int slotY = screenHeight - 19;
+                        int slotX = scaledWidth / 2 - 91 + 3 + i * 20;
+                        int slotY = scaledHeight - 19;
 
                         // Bind terrain texture
                         Textures::getInstance().bind("resources/terrain.png");
@@ -142,7 +176,7 @@ void Gui::render(float partialTick) {
     glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ONE_MINUS_SRC_COLOR);
 
     // Crosshair (Java: this.blit(var6 / 2 - 7, var7 / 2 - 7, 0, 0, 16, 16))
-    blit(screenWidth / 2 - 7, screenHeight / 2 - 7, 0, 0, 16, 16);
+    blit(scaledWidth / 2 - 7, scaledHeight / 2 - 7, 0, 0, 16, 16);
 
     glDisable(GL_BLEND);
 
@@ -174,8 +208,8 @@ void Gui::setupOrtho() {
     glMatrixMode(GL_PROJECTION);
     glPushMatrix();
     glLoadIdentity();
-    // Match Java exactly: near=1000, far=3000
-    glOrtho(0, screenWidth, screenHeight, 0, 1000.0, 3000.0);
+    // Use scaled dimensions for GUI (matching Java ScaledResolution)
+    glOrtho(0, scaledWidth, scaledHeight, 0, 1000.0, 3000.0);
 
     glMatrixMode(GL_MODELVIEW);
     glPushMatrix();
@@ -292,14 +326,14 @@ void Gui::renderHearts() {
     random.seed(tickCount * 312871);
 
     // Heart position (Java: int var19 = var6 / 2 - 91 + var16 * 8)
-    int baseY = screenHeight - 32;
+    int baseY = scaledHeight - 32;
 
     Textures::getInstance().bind("resources/gui/icons.png");
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     for (int i = 0; i < 10; i++) {
-        int heartX = screenWidth / 2 - 91 + i * 8;
+        int heartX = scaledWidth / 2 - 91 + i * 8;
         int heartY = baseY;
 
         // Shake hearts when low health (Java: if (var13 <= 4) var17 += this.random.nextInt(2))
@@ -336,13 +370,13 @@ void Gui::renderArmor() {
     int armor = 0;  // player->getArmor() if implemented
     if (armor <= 0) return;
 
-    int baseY = screenHeight - 32;
+    int baseY = scaledHeight - 32;
 
     Textures::getInstance().bind("resources/gui/icons.png");
     glEnable(GL_BLEND);
 
     for (int i = 0; i < 10; i++) {
-        int armorX = screenWidth / 2 + 91 - i * 8 - 9;
+        int armorX = scaledWidth / 2 + 91 - i * 8 - 9;
 
         if (i * 2 + 1 < armor) {
             // Full armor icon (Java: this.blit(var18, var17, 34, 9, 9, 9))
@@ -410,7 +444,7 @@ void Gui::renderDebugInfo() {
     ss.str("");
     ss << "Used memory: " << (usedMem * 100 / totalMem) << "% (" << usedMem << "MB) of " << totalMem << "MB";
     int memWidth = font.getWidth(ss.str());
-    font.drawShadow(ss.str(), screenWidth - memWidth - 2, 2, 0xE0E0E0);
+    font.drawShadow(ss.str(), scaledWidth - memWidth - 2, 2, 0xE0E0E0);
 }
 
 void Gui::renderChat() {

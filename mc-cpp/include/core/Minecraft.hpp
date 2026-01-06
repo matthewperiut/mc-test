@@ -57,6 +57,8 @@ public:
     float fps;
     int fpsCounter;
     long lastFpsTime;
+    int ticks;           // Game tick counter (20 ticks/sec), matching Java Minecraft.ticks
+    int lastClickTick;   // Last tick when mouse was clicked, for placement cooldown
 
     // Debug
     bool showDebug;
