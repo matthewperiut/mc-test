@@ -14,6 +14,7 @@ public:
 
     // Draw text
     void draw(const std::string& text, int x, int y, int color);
+    void draw(const std::string& text, int x, int y, int color, bool darken);
     void drawShadow(const std::string& text, int x, int y, int color);
     void drawCentered(const std::string& text, int x, int y, int color);
 
@@ -25,14 +26,17 @@ public:
     static constexpr int charWidth = 8;
     static constexpr int charHeight = 8;
 
+    // Acceptable characters string (maps char to texture position)
+    static const std::string acceptableLetters;
+
 private:
     GLuint fontTexture;
     bool initialized;
 
     int charWidths[256];  // Width of each character
 
-    void drawChar(char c, float x, float y, int color);
-    void loadCharWidths();
+    void drawChar(int charIndex, float x, float y);
+    void calculateCharWidths(const unsigned char* pixels, int width, int height);
 };
 
 } // namespace mc
