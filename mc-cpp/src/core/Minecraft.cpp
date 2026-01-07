@@ -13,6 +13,7 @@
 #include "gui/PauseScreen.hpp"
 #include "gamemode/GameMode.hpp"
 #include "item/Inventory.hpp"
+#include "item/Item.hpp"
 #include "phys/Vec3.hpp"
 #include "phys/AABB.hpp"
 
@@ -140,6 +141,9 @@ bool Minecraft::init(int width, int height, bool fs) {
 
     // Initialize tiles
     Tile::initTiles();
+
+    // Initialize items
+    Item::initItems();
 
     // Initialize textures
     Textures::getInstance().init();
@@ -632,6 +636,7 @@ void Minecraft::shutdown() {
     SoundEngine::getInstance().destroy();
     Textures::getInstance().destroy();
     Tesselator::getInstance().destroy();
+    Item::destroyItems();
     Tile::destroyTiles();
 
     // Destroy window

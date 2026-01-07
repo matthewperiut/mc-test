@@ -1,12 +1,14 @@
 #pragma once
 
 #include "gui/Font.hpp"
+#include "item/Inventory.hpp"
 #include <GL/glew.h>
 #include <random>
 
 namespace mc {
 
 class Minecraft;
+class TileRenderer;
 
 class Gui {
 public:
@@ -59,6 +61,10 @@ public:
     int getScaledWidth() const { return scaledWidth; }
     int getScaledHeight() const { return scaledHeight; }
     int getGuiScale() const { return guiScale; }
+
+    // Static method for rendering items in GUI (shared by Gui and InventoryScreen)
+    // Renders at position (x, y) with optional stack count display
+    static void renderGuiItem(const ItemStack& item, int x, int y, float z, Font* font, TileRenderer& tileRenderer);
 
 protected:
     void setupOrtho();

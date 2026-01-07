@@ -248,18 +248,59 @@ int Level::getBlockLight(int x, int y, int z) const {
     return blockLight[getIndex(x, y, z)];
 }
 
+int Level::getSkyDarken() const {
+    // Match Java Level.getSkyDarken() exactly
+    float timeOfDay = getTimeOfDay();
+
+    // Java: float var3 = 1.0F - (Mth.cos(var2 * (float)Math.PI * 2.0F) * 2.0F + 0.5F)
+    float celestialAngle = 1.0f - (std::cos(timeOfDay * Mth::PI * 2.0f) * 2.0f + 0.5f);
+
+    // Clamp to 0-1
+    if (celestialAngle < 0.0f) celestialAngle = 0.0f;
+    if (celestialAngle > 1.0f) celestialAngle = 1.0f;
+
+    // Java: return (int)(var3 * 11.0F)
+    return static_cast<int>(celestialAngle * 11.0f);
+}
+
 float Level::getBrightness(int x, int y, int z) const {
+    // Match Java Level.getBrightness() exactly:
+    // return this.dimension.brightnessRamp[this.getRawBrightness(x, y, z)]
+
     int sky = getSkyLight(x, y, z);
     int block = getBlockLight(x, y, z);
-    int light = std::max(sky, block);
 
-    // Convert to brightness factor
-    static const float brightnessTable[16] = {
-        0.05f, 0.067f, 0.085f, 0.106f, 0.129f, 0.156f, 0.186f, 0.221f,
-        0.261f, 0.309f, 0.367f, 0.437f, 0.525f, 0.638f, 0.789f, 1.0f
+    // Apply sky darkening based on time of day (Java: getRawBrightness subtracts skyDarken)
+    int skyDarken = getSkyDarken();
+    int adjustedSky = sky - skyDarken;
+    if (adjustedSky < 0) adjustedSky = 0;
+
+    // Use max of adjusted sky light and block light
+    int light = std::max(adjustedSky, block);
+
+    // brightnessRamp from Java Dimension.updateLightRamp()
+    // Formula: (1.0 - var3) / (var3 * 3.0 + 1.0) * (1.0 - 0.05) + 0.05
+    // where var3 = 1.0 - i/15.0
+    static const float brightnessRamp[16] = {
+        0.05f,     // 0
+        0.0672f,   // 1
+        0.0859f,   // 2
+        0.1072f,   // 3
+        0.1323f,   // 4
+        0.1622f,   // 5
+        0.1988f,   // 6
+        0.2441f,   // 7
+        0.3014f,   // 8
+        0.3753f,   // 9
+        0.4729f,   // 10
+        0.6063f,   // 11
+        0.7969f,   // 12
+        0.9500f,   // 13 (actually converges toward 1.0)
+        0.9500f,   // 14
+        1.0f       // 15
     };
 
-    return brightnessTable[light];
+    return brightnessRamp[light];
 }
 
 void Level::updateLightAt(int /*x*/, int /*y*/, int /*z*/) {

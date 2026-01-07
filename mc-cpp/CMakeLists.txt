@@ -79,6 +79,7 @@ set(GUI_SOURCES
 
 set(ITEM_SOURCES
     src/item/Inventory.cpp
+    src/item/Item.cpp
 )
 
 set(GAMEMODE_SOURCES

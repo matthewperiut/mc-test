@@ -1,13 +1,16 @@
 #include "gui/InventoryScreen.hpp"
+#include "gui/Gui.hpp"
 #include "core/Minecraft.hpp"
 #include "entity/LocalPlayer.hpp"
 #include "renderer/Textures.hpp"
 #include "renderer/TileRenderer.hpp"
 #include "renderer/Tesselator.hpp"
 #include "world/tile/Tile.hpp"
+#include "item/Item.hpp"
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <algorithm>
+#include <cctype>
 
 namespace mc {
 
@@ -163,96 +166,19 @@ void InventoryScreen::renderSlot(int slotIndex, int x, int y) {
 
     if (item.isEmpty()) return;
 
-    // Only render blocks for now (id < 256)
-    if (item.id > 0 && item.id < 256) {
-        Tile* tile = Tile::tiles[item.id];
-        if (!tile) return;
-
-        Textures::getInstance().bind("resources/terrain.png");
-
-        glEnable(GL_DEPTH_TEST);
-        glClear(GL_DEPTH_BUFFER_BIT);
-
-        glPushMatrix();
-
-        // Transform for isometric block view (matching Java Gui.renderSlot and hotbar rendering)
-        glTranslatef(static_cast<float>(x - 2), static_cast<float>(y + 3), 100.0f);
-        glScalef(10.0f, 10.0f, 10.0f);
-        glTranslatef(1.0f, 0.5f, 8.0f);
-        glRotatef(-30.0f, 1.0f, 0.0f, 0.0f);
-        glRotatef(45.0f, 0.0f, 1.0f, 0.0f);
-        glScalef(-1.0f, -1.0f, 1.0f);
-
-        // Get brightness
-        float brightness = 1.0f;
-
-        TileRenderer tileRenderer;
-        tileRenderer.renderAllFaces = true;
-
-        Tesselator& t = Tesselator::getInstance();
-        t.begin(GL_QUADS);
-        tileRenderer.renderBlockItem(tile, brightness);
-        t.end();
-
-        glPopMatrix();
-        glDisable(GL_DEPTH_TEST);
-
-        // Render stack count if > 1
-        if (item.count > 1) {
-            std::string countStr = std::to_string(item.count);
-            // Position count in bottom-right of slot
-            int textX = x + 17 - font->getWidth(countStr);
-            int textY = y + 9;
-            font->drawShadow(countStr, textX, textY, 0xFFFFFF);
-        }
-    }
+    TileRenderer tileRenderer;
+    Gui::renderGuiItem(item, x, y, 100.0f, font, tileRenderer);
 }
 
 void InventoryScreen::renderDraggedItem() {
     if (draggedItem.isEmpty()) return;
 
-    // Only render blocks
-    if (draggedItem.id > 0 && draggedItem.id < 256) {
-        Tile* tile = Tile::tiles[draggedItem.id];
-        if (!tile) return;
+    // Render at cursor position (offset by half slot size to center)
+    int x = mouseX - 8;
+    int y = mouseY - 8;
 
-        Textures::getInstance().bind("resources/terrain.png");
-
-        glEnable(GL_DEPTH_TEST);
-        glClear(GL_DEPTH_BUFFER_BIT);
-
-        glPushMatrix();
-
-        // Render at cursor position (offset by half slot size to center)
-        int x = mouseX - 8;
-        int y = mouseY - 8;
-
-        glTranslatef(static_cast<float>(x - 2), static_cast<float>(y + 3), 200.0f);  // Higher Z to render on top
-        glScalef(10.0f, 10.0f, 10.0f);
-        glTranslatef(1.0f, 0.5f, 8.0f);
-        glRotatef(-30.0f, 1.0f, 0.0f, 0.0f);
-        glRotatef(45.0f, 0.0f, 1.0f, 0.0f);
-        glScalef(-1.0f, -1.0f, 1.0f);
-
-        TileRenderer tileRenderer;
-        tileRenderer.renderAllFaces = true;
-
-        Tesselator& t = Tesselator::getInstance();
-        t.begin(GL_QUADS);
-        tileRenderer.renderBlockItem(tile, 1.0f);
-        t.end();
-
-        glPopMatrix();
-        glDisable(GL_DEPTH_TEST);
-
-        // Render stack count
-        if (draggedItem.count > 1) {
-            std::string countStr = std::to_string(draggedItem.count);
-            int textX = mouseX + 9 - font->getWidth(countStr);
-            int textY = mouseY + 1;
-            font->drawShadow(countStr, textX, textY, 0xFFFFFF);
-        }
-    }
+    TileRenderer tileRenderer;
+    Gui::renderGuiItem(draggedItem, x, y, 200.0f, font, tileRenderer);
 }
 
 void InventoryScreen::blit(int x, int y, int u, int v, int w, int h) {
@@ -315,6 +241,19 @@ void InventoryScreen::renderTooltip() {
         Tile* tile = Tile::tiles[item.id];
         if (tile && !tile->name.empty()) {
             itemName = tile->name;
+        }
+    } else if (item.id >= 256) {
+        Item* itemDef = Item::byId(item.id);
+        if (itemDef) {
+            itemName = itemDef->getDescriptionId();
+            // Remove "item." prefix if present
+            if (itemName.rfind("item.", 0) == 0) {
+                itemName = itemName.substr(5);
+            }
+            // Capitalize first letter
+            if (!itemName.empty()) {
+                itemName[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(itemName[0])));
+            }
         }
     }
 

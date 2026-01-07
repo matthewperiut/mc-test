@@ -27,7 +27,10 @@ public:
     void renderBlockItem(Tile* tile, float scale);
 
     // Render a tile for GUI display (matches Java TileRenderer.renderTile(Tile, int))
+    // renderTileForGUI uses normals for OpenGL lighting (hand rendering)
+    // renderTileForGUIWithColors uses vertex colors (GUI slots without lighting)
     void renderTileForGUI(Tile* tile, int data = 0);
+    void renderTileForGUIWithColors(Tile* tile, int data = 0);
 
     // Render specific shapes
     void renderCube(Tile* tile, int x, int y, int z);
@@ -47,6 +50,10 @@ public:
     // Get brightness at position
     float getBrightness(int x, int y, int z);
     float getAverageBrightness(int x0, int y0, int z0, int x1, int y1, int z1);
+
+    // Check if a render shape can be rendered as a 3D block
+    // (matches Java TileRenderer.canRender)
+    static bool canRender(int renderShape);
 
 private:
     // Get UV coordinates from texture index

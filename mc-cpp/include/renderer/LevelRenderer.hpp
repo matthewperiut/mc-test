@@ -90,6 +90,9 @@ private:
     void getSkyColor(float timeOfDay, float& r, float& g, float& b) const;
     float* getSunriseColor(float timeOfDay) const;
     float getStarBrightness(float timeOfDay) const;
+
+    // Entity rendering helpers
+    void renderDroppedItemSprite(int icon, int copies, float playerYRot, unsigned int randomSeed);
 };
 
 } // namespace mc

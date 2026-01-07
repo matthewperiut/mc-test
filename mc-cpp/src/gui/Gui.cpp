@@ -8,6 +8,7 @@
 #include "renderer/Tesselator.hpp"
 #include "world/tile/Tile.hpp"
 #include "item/Inventory.hpp"
+#include "item/Item.hpp"
 #include <GL/glew.h>
 #include <sstream>
 #include <iomanip>
@@ -102,64 +103,18 @@ void Gui::render(float partialTick) {
         // Selection highlight (Java: this.blit(var6 / 2 - 91 - 1 + var11.selected * 20, var7 - 22 - 1, 0, 22, 24, 22))
         blit(scaledWidth / 2 - 91 - 1 + selectedSlot * 20, scaledHeight - 22 - 1, 0, 22, 24, 22);
 
-        // Render items in hotbar slots as 3D blocks (like Java ItemRenderer.renderGuiItem)
+        // Render items in hotbar slots (like Java ItemRenderer.renderGuiItem)
         if (player->inventory) {
             TileRenderer tileRenderer;
 
             for (int i = 0; i < 9; i++) {
                 const ItemStack& item = player->inventory->getItem(i);
-                if (!item.isEmpty() && item.id > 0 && item.id < 256) {
-                    Tile* tile = Tile::tiles[item.id];
-                    if (tile) {
-                        int slotX = scaledWidth / 2 - 91 + 3 + i * 20;
-                        int slotY = scaledHeight - 19;
+                if (item.isEmpty()) continue;
 
-                        // Bind terrain texture
-                        Textures::getInstance().bind("resources/terrain.png");
+                int slotX = scaledWidth / 2 - 91 + 3 + i * 20;
+                int slotY = scaledHeight - 19;
 
-                        // Enable depth test for proper 3D rendering
-                        glEnable(GL_DEPTH_TEST);
-                        glClear(GL_DEPTH_BUFFER_BIT);
-
-                        glPushMatrix();
-
-                        // Java ItemRenderer.renderGuiItem() exact transformations:
-                        // GL11.glTranslatef((float)(x - 2), (float)(y + 3), 0.0F);
-                        // GL11.glScalef(10.0F, 10.0F, 10.0F);
-                        // GL11.glTranslatef(1.0F, 0.5F, 8.0F);
-                        // GL11.glRotatef(210.0F, 1.0F, 0.0F, 0.0F);
-                        // GL11.glRotatef(45.0F, 0.0F, 1.0F, 0.0F);
-                        glTranslatef(static_cast<float>(slotX - 2), static_cast<float>(slotY + 3), 0.0f);
-                        glScalef(10.0f, 10.0f, 10.0f);
-                        glTranslatef(1.0f, 0.5f, 8.0f);
-                        // Flip rotation to show front of block instead of back
-                        glRotatef(-210.0f, 1.0f, 0.0f, 0.0f);
-                        glRotatef(-45.0f, 0.0f, 1.0f, 0.0f);
-
-                        // Reset color (Java: GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F))
-                        glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-
-                        // Render 3D block using Java-matching method
-                        tileRenderer.renderTileForGUI(tile, 0);
-
-                        glPopMatrix();
-                        glDisable(GL_DEPTH_TEST);
-
-                        // Render stack count if > 1 (Java renderGuiItemDecorations)
-                        if (item.count > 1) {
-                            std::string countStr = std::to_string(item.count);
-                            // Position in bottom-right of slot (Java: x + 19 - 2 - font.width = x + 17 - width)
-                            int textX = slotX + 17 - font.getWidth(countStr);
-                            int textY = slotY + 9;
-
-                            // Java disables lighting and depth test for text
-                            glDisable(GL_LIGHTING);
-                            glDisable(GL_DEPTH_TEST);
-                            font.drawShadow(countStr, textX, textY, 0xFFFFFF);
-                            glEnable(GL_DEPTH_TEST);
-                        }
-                    }
-                }
+                renderGuiItem(item, slotX, slotY, blitOffset, &font, tileRenderer);
             }
         }
 
@@ -448,6 +403,77 @@ void Gui::renderDebugInfo() {
 
 void Gui::renderChat() {
     // Chat messages would be rendered here
+}
+
+void Gui::renderGuiItem(const ItemStack& item, int x, int y, float z, Font* font, TileRenderer& tileRenderer) {
+    if (item.isEmpty()) return;
+
+    // Enable depth test for proper 3D rendering
+    glEnable(GL_DEPTH_TEST);
+    glClear(GL_DEPTH_BUFFER_BIT);
+
+    if (item.id > 0 && item.id < 256) {
+        // Render block with vertex colors (no OpenGL lighting for GUI slots)
+        Tile* tile = Tile::tiles[item.id];
+        if (tile) {
+            Textures::getInstance().bind("resources/terrain.png");
+
+            // Disable lighting - use vertex colors for consistent GUI appearance
+            glDisable(GL_LIGHTING);
+
+            glPushMatrix();
+            glTranslatef(static_cast<float>(x - 2), static_cast<float>(y + 3), z);
+            glScalef(10.0f, 10.0f, 10.0f);
+            glTranslatef(1.0f, 0.5f, 8.0f);
+            glRotatef(-210.0f, 1.0f, 0.0f, 0.0f);
+            glRotatef(-45.0f, 0.0f, 1.0f, 0.0f);
+            glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+            tileRenderer.renderTileForGUIWithColors(tile, item.getAuxValue());
+            glPopMatrix();
+        }
+    } else if (item.id >= 256) {
+        // Render item sprite (matching Java ItemRenderer.renderGuiItem for items)
+        Item* itemDef = Item::byId(item.id);
+        if (itemDef) {
+            Textures::getInstance().bind("resources/gui/items.png");
+
+            int icon = itemDef->getIcon();
+            int sx = icon % 16 * 16;
+            int sy = icon / 16 * 16;
+
+            glDisable(GL_LIGHTING);
+            glEnable(GL_ALPHA_TEST);
+            glAlphaFunc(GL_GREATER, 0.0f);
+
+            // Render item sprite at slot position
+            float u0 = static_cast<float>(sx) / 256.0f;
+            float u1 = static_cast<float>(sx + 16) / 256.0f;
+            float v0 = static_cast<float>(sy) / 256.0f;
+            float v1 = static_cast<float>(sy + 16) / 256.0f;
+
+            Tesselator& t = Tesselator::getInstance();
+            t.begin(GL_QUADS);
+            t.tex(u0, v1); t.vertex(static_cast<float>(x), static_cast<float>(y + 16), z);
+            t.tex(u1, v1); t.vertex(static_cast<float>(x + 16), static_cast<float>(y + 16), z);
+            t.tex(u1, v0); t.vertex(static_cast<float>(x + 16), static_cast<float>(y), z);
+            t.tex(u0, v0); t.vertex(static_cast<float>(x), static_cast<float>(y), z);
+            t.end();
+
+            glEnable(GL_LIGHTING);
+        }
+    }
+
+    glDisable(GL_DEPTH_TEST);
+
+    // Render stack count if > 1
+    if (item.count > 1 && font) {
+        std::string countStr = std::to_string(item.count);
+        int textX = x + 17 - font->getWidth(countStr);
+        int textY = y + 9;
+        glDisable(GL_LIGHTING);
+        glDisable(GL_DEPTH_TEST);
+        font->drawShadow(countStr, textX, textY, 0xFFFFFF);
+    }
 }
 
 } // namespace mc

@@ -1,12 +1,15 @@
 #pragma once
 
 #include "phys/HitResult.hpp"
+#include "renderer/TileRenderer.hpp"
+#include <memory>
 
 namespace mc {
 
 class Minecraft;
 class Level;
 class LocalPlayer;
+struct ItemStack;
 
 class GameRenderer {
 public:
@@ -34,6 +37,9 @@ public:
 
     // Screen dimensions
     int screenWidth, screenHeight;
+
+    // Tile renderer for held blocks
+    TileRenderer tileRenderer;
 
     GameRenderer(Minecraft* minecraft);
 
@@ -67,6 +73,7 @@ private:
     void orientCamera(float partialTick);
     void applyBobbing(float partialTick);
     void renderArmModel(float scale);  // Render the arm geometry for first-person hand
+    void renderItem(const ItemStack& item);  // Render held item (block or flat sprite)
 };
 
 } // namespace mc

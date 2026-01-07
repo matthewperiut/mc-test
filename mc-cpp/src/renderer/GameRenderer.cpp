@@ -5,8 +5,10 @@
 #include "renderer/Textures.hpp"
 #include "entity/LocalPlayer.hpp"
 #include "world/Level.hpp"
+#include "world/tile/Tile.hpp"
 #include "gamemode/GameMode.hpp"
 #include "item/Inventory.hpp"
+#include "item/Item.hpp"
 #include "util/Mth.hpp"
 #include <GL/glew.h>
 #include <cstdio>
@@ -470,10 +472,6 @@ void GameRenderer::renderHand(float partialTick) {
 
     const ItemStack& selected = player->inventory->getSelected();
 
-    // Only render hand when slot is empty (no item held)
-    // TODO: Implement item rendering for non-empty slots
-    if (!selected.isEmpty()) return;
-
     // Clear depth buffer so hand renders in front of everything (matching Java)
     glClear(GL_DEPTH_BUFFER_BIT);
 
@@ -504,40 +502,24 @@ void GameRenderer::renderHand(float partialTick) {
         glRotatef(tiltAmount, 1.0f, 0.0f, 0.0f);
     }
 
-    // Get interpolated item height for smooth animation
-    float h = oItemHeight + (itemHeight - oItemHeight) * partialTick;
+    // Setup lighting FIRST with camera rotation (matching Java ItemInHandRenderer.render lines 135-139)
+    // Java: glPushMatrix -> rotate by player view -> Lighting.turnOn() -> glPopMatrix
+    glPushMatrix();
+    glRotatef(player->getInterpolatedXRot(partialTick), 1.0f, 0.0f, 0.0f);
+    glRotatef(player->getInterpolatedYRot(partialTick), 0.0f, 1.0f, 0.0f);  // NO +180 here!
 
-    // Get brightness at player position
-    float br = 1.0f;
-    if (minecraft->level) {
-        br = minecraft->level->getBrightness(
-            Mth::floor(player->x),
-            Mth::floor(player->y),
-            Mth::floor(player->z)
-        );
-    }
-
-    // Setup lighting (matching Java Lighting.turnOn exactly)
-    // Light positions must be set WITH camera rotation applied so they're in world space
-    // This makes the lighting change as you look around
+    // Lighting.turnOn() - matching Java exactly
     glEnable(GL_LIGHTING);
     glEnable(GL_LIGHT0);
     glEnable(GL_LIGHT1);
     glEnable(GL_COLOR_MATERIAL);
     glColorMaterial(GL_FRONT, GL_AMBIENT_AND_DIFFUSE);
 
-    // Light parameters from Java Lighting.turnOn()
-    float ambient = 0.4f;   // Global ambient
-    float diffuse = 0.6f;   // Light diffuse intensity
-    float specular = 0.0f;  // No specular
+    float ambient = 0.4f;
+    float diffuse = 0.6f;
+    float specular = 0.0f;
 
-    // Apply camera rotation before setting light positions
-    // This puts lights in world space so lighting responds to camera rotation
-    glPushMatrix();
-    glRotatef(player->getInterpolatedXRot(partialTick), 1.0f, 0.0f, 0.0f);
-    glRotatef(player->getInterpolatedYRot(partialTick) + 180.0f, 0.0f, 1.0f, 0.0f);
-
-    // Light 0 direction: normalized (0.2, 1.0, -0.7)
+    // Light 0: direction (0.2, 1.0, -0.7) normalized
     float len0 = std::sqrt(0.2f*0.2f + 1.0f*1.0f + 0.7f*0.7f);
     float light0Pos[] = {0.2f/len0, 1.0f/len0, -0.7f/len0, 0.0f};
     float light0Diffuse[] = {diffuse, diffuse, diffuse, 1.0f};
@@ -549,7 +531,7 @@ void GameRenderer::renderHand(float partialTick) {
     glLightfv(GL_LIGHT0, GL_AMBIENT, light0Ambient);
     glLightfv(GL_LIGHT0, GL_SPECULAR, light0Specular);
 
-    // Light 1 direction: normalized (-0.2, 1.0, 0.7)
+    // Light 1: direction (-0.2, 1.0, 0.7) normalized
     float len1 = std::sqrt(0.2f*0.2f + 1.0f*1.0f + 0.7f*0.7f);
     float light1Pos[] = {-0.2f/len1, 1.0f/len1, 0.7f/len1, 0.0f};
     float light1Diffuse[] = {diffuse, diffuse, diffuse, 1.0f};
@@ -561,72 +543,122 @@ void GameRenderer::renderHand(float partialTick) {
     glLightfv(GL_LIGHT1, GL_AMBIENT, light1Ambient);
     glLightfv(GL_LIGHT1, GL_SPECULAR, light1Specular);
 
-    glPopMatrix();  // Remove camera rotation, keep light positions in world space
-
-    // Global ambient light model
+    // Global ambient and shade model
     float globalAmbient[] = {ambient, ambient, ambient, 1.0f};
     glLightModelfv(GL_LIGHT_MODEL_AMBIENT, globalAmbient);
     glShadeModel(GL_FLAT);
 
-    // Set hand color based on world brightness
+    glPopMatrix();
+
+    // Get brightness at player position AFTER lighting setup (matching Java line 140-141)
+    float br = 1.0f;
+    if (minecraft->level) {
+        br = minecraft->level->getBrightness(
+            Mth::floor(player->x),
+            Mth::floor(player->y),
+            Mth::floor(player->z)
+        );
+    }
     glColor4f(br, br, br, 1.0f);
 
-    // Now render the hand (matching Java ItemInHandRenderer.render empty hand case)
-    glPushMatrix();
+    // Get interpolated item height for smooth animation (Java line 133)
+    float h = oItemHeight + (itemHeight - oItemHeight) * partialTick;
 
-    // Get swing animation (matching Java player.getAttackAnim(a))
-    float swing = player->getAttackAnim(partialTick);
-    float swing1 = Mth::sin(swing * Mth::PI);
-    float swing2 = Mth::sin(Mth::sqrt(swing) * Mth::PI);
+    // Check if holding an item
+    if (!selected.isEmpty()) {
+        // Render held item (matching Java ItemInHandRenderer.render with item)
+        glPushMatrix();
 
-    // Apply swing offset (matching Java ItemInHandRenderer line 177)
-    glTranslatef(
-        -swing2 * 0.3f,
-        Mth::sin(Mth::sqrt(swing) * Mth::PI * 2.0f) * 0.4f,
-        -swing1 * 0.4f
-    );
+        float d = 0.8f;
+        float swing = player->getAttackAnim(partialTick);
+        float swing1 = Mth::sin(swing * Mth::PI);
+        float swing2 = Mth::sin(Mth::sqrt(swing) * Mth::PI);
 
-    // Base hand position (matching Java line 178)
-    float d = 0.8f;
-    glTranslatef(0.8f * d, -0.75f * d - (1.0f - h) * 0.6f, -0.9f * d);
+        // Swing offset for items (Java line 153)
+        glTranslatef(
+            -swing2 * 0.4f,
+            Mth::sin(Mth::sqrt(swing) * Mth::PI * 2.0f) * 0.2f,
+            -swing1 * 0.2f
+        );
 
-    // Base rotation (matching Java line 179)
-    glRotatef(45.0f, 0.0f, 1.0f, 0.0f);
+        // Base position for items (Java line 154)
+        glTranslatef(0.7f * d, -0.65f * d - (1.0f - h) * 0.6f, -0.9f * d);
+        glRotatef(45.0f, 0.0f, 1.0f, 0.0f);
+        glEnable(GL_RESCALE_NORMAL);
 
-    // Enable rescale normal for proper lighting after scaling
-    glEnable(GL_RESCALE_NORMAL);
+        // Swing rotations (Java lines 157-162)
+        swing = player->getAttackAnim(partialTick);
+        swing1 = Mth::sin(swing * swing * Mth::PI);
+        swing2 = Mth::sin(Mth::sqrt(swing) * Mth::PI);
+        glRotatef(-swing1 * 20.0f, 0.0f, 1.0f, 0.0f);
+        glRotatef(-swing2 * 20.0f, 0.0f, 0.0f, 1.0f);
+        glRotatef(-swing2 * 80.0f, 1.0f, 0.0f, 0.0f);
 
-    // Apply swing rotations (matching Java lines 181-185)
-    // Note: Java recalculates swing here for the rotations
-    swing = player->getAttackAnim(partialTick);
-    swing1 = Mth::sin(swing * swing * Mth::PI);
-    swing2 = Mth::sin(Mth::sqrt(swing) * Mth::PI);
-    glRotatef(swing2 * 70.0f, 0.0f, 1.0f, 0.0f);
-    glRotatef(-swing1 * 20.0f, 0.0f, 0.0f, 1.0f);
+        // Scale (Java line 164)
+        float s = 0.4f;
+        glScalef(s, s, s);
 
-    // Bind player skin texture (matching Java line 186)
-    Textures::getInstance().bind("resources/mob/char.png");
+        // Check if item should be mirrored
+        Item* item = selected.getItem();
+        if (item && item->isMirroredArt()) {
+            glRotatef(180.0f, 0.0f, 1.0f, 0.0f);
+        }
 
-    // Final transformations to position arm correctly (matching Java lines 187-192)
-    glTranslatef(-1.0f, 3.6f, 3.5f);
-    glRotatef(120.0f, 0.0f, 0.0f, 1.0f);
-    glRotatef(200.0f, 1.0f, 0.0f, 0.0f);
-    glRotatef(-135.0f, 0.0f, 1.0f, 0.0f);
-    glScalef(1.0f, 1.0f, 1.0f);
-    glTranslatef(5.6f, 0.0f, 0.0f);
+        // Render the item
+        renderItem(selected);
 
-    // Render the arm at model scale 0.0625 (1/16) (matching Java line 197)
-    renderArmModel(0.0625f);
+        glDisable(GL_RESCALE_NORMAL);
+        glPopMatrix();
+    } else {
+        // Render empty hand (arm only)
+        glPushMatrix();
 
-    glDisable(GL_RESCALE_NORMAL);
+        float swing = player->getAttackAnim(partialTick);
+        float swing1 = Mth::sin(swing * Mth::PI);
+        float swing2 = Mth::sin(Mth::sqrt(swing) * Mth::PI);
 
-    // Disable lighting (matching Java Lighting.turnOff)
+        // Swing offset for arm (Java line 177)
+        glTranslatef(
+            -swing2 * 0.3f,
+            Mth::sin(Mth::sqrt(swing) * Mth::PI * 2.0f) * 0.4f,
+            -swing1 * 0.4f
+        );
+
+        // Base arm position (Java line 178)
+        float d = 0.8f;
+        glTranslatef(0.8f * d, -0.75f * d - (1.0f - h) * 0.6f, -0.9f * d);
+        glRotatef(45.0f, 0.0f, 1.0f, 0.0f);
+        glEnable(GL_RESCALE_NORMAL);
+
+        // Swing rotations (Java lines 181-185)
+        swing = player->getAttackAnim(partialTick);
+        swing1 = Mth::sin(swing * swing * Mth::PI);
+        swing2 = Mth::sin(Mth::sqrt(swing) * Mth::PI);
+        glRotatef(swing2 * 70.0f, 0.0f, 1.0f, 0.0f);
+        glRotatef(-swing1 * 20.0f, 0.0f, 0.0f, 1.0f);
+
+        // Bind player skin texture
+        Textures::getInstance().bind("resources/mob/char.png");
+
+        // Final transformations (Java lines 187-192)
+        glTranslatef(-1.0f, 3.6f, 3.5f);
+        glRotatef(120.0f, 0.0f, 0.0f, 1.0f);
+        glRotatef(200.0f, 1.0f, 0.0f, 0.0f);
+        glRotatef(-135.0f, 0.0f, 1.0f, 0.0f);
+        glScalef(1.0f, 1.0f, 1.0f);
+        glTranslatef(5.6f, 0.0f, 0.0f);
+
+        renderArmModel(0.0625f);
+
+        glDisable(GL_RESCALE_NORMAL);
+        glPopMatrix();
+    }
+
+    // Disable lighting
     glDisable(GL_LIGHTING);
     glDisable(GL_LIGHT0);
     glDisable(GL_LIGHT1);
     glDisable(GL_COLOR_MATERIAL);
-
-    glPopMatrix();
 }
 
 void GameRenderer::renderArmModel(float scale) {
@@ -768,6 +800,233 @@ void GameRenderer::renderArmModel(float scale) {
         t.tex(u0, v1); t.vertex(x0, y1, z1);
         t.end();
     }
+}
+
+void GameRenderer::renderItem(const ItemStack& item) {
+    // Render held item matching Java ItemInHandRenderer.renderItem()
+    glPushMatrix();
+
+    // Enable alpha test for transparent pixels
+    glEnable(GL_ALPHA_TEST);
+    glAlphaFunc(GL_GREATER, 0.1f);
+
+    if (item.isBlock()) {
+        // Render block
+        Tile* tile = item.getTile();
+        if (tile && TileRenderer::canRender(static_cast<int>(tile->renderShape))) {
+            // Bind terrain texture and render 3D block
+            Textures::getInstance().bind("resources/terrain.png");
+            tileRenderer.renderTileForGUI(tile, item.getAuxValue());
+        } else {
+            // Non-cube block - render as flat sprite from terrain.png
+            Textures::getInstance().bind("resources/terrain.png");
+            // Fall through to sprite rendering below
+            int icon = item.getIcon();
+            float u0 = (static_cast<float>(icon % 16 * 16) + 0.0f) / 256.0f;
+            float u1 = (static_cast<float>(icon % 16 * 16) + 15.99f) / 256.0f;
+            float v0 = (static_cast<float>(icon / 16 * 16) + 0.0f) / 256.0f;
+            float v1 = (static_cast<float>(icon / 16 * 16) + 15.99f) / 256.0f;
+
+            // Render flat sprite with depth (matching Java ItemInHandRenderer lines 40-126)
+            float r = 1.0f;
+            float xo = 0.0f;
+            float yo = 0.3f;
+            glEnable(GL_RESCALE_NORMAL);
+            glTranslatef(-xo, -yo, 0.0f);
+            float s = 1.5f;
+            glScalef(s, s, s);
+            glRotatef(50.0f, 0.0f, 1.0f, 0.0f);
+            glRotatef(335.0f, 0.0f, 0.0f, 1.0f);
+            glTranslatef(-0.9375f, -0.0625f, 0.0f);
+
+            float dd = 0.0625f;
+            Tesselator& t = Tesselator::getInstance();
+
+            // Front face
+            t.begin(GL_QUADS);
+            t.normal(0.0f, 0.0f, 1.0f);
+            t.tex(u1, v1); t.vertex(0.0f, 0.0f, 0.0f);
+            t.tex(u0, v1); t.vertex(r, 0.0f, 0.0f);
+            t.tex(u0, v0); t.vertex(r, 1.0f, 0.0f);
+            t.tex(u1, v0); t.vertex(0.0f, 1.0f, 0.0f);
+            t.end();
+
+            // Back face
+            t.begin(GL_QUADS);
+            t.normal(0.0f, 0.0f, -1.0f);
+            t.tex(u1, v0); t.vertex(0.0f, 1.0f, -dd);
+            t.tex(u0, v0); t.vertex(r, 1.0f, -dd);
+            t.tex(u0, v1); t.vertex(r, 0.0f, -dd);
+            t.tex(u1, v1); t.vertex(0.0f, 0.0f, -dd);
+            t.end();
+
+            // Side strips for thickness (16 strips per side)
+            for (int i = 0; i < 16; ++i) {
+                float p = static_cast<float>(i) / 16.0f;
+                float uu = u1 + (u0 - u1) * p - 0.001953125f;
+                float xx = r * p;
+
+                // Left edge
+                t.begin(GL_QUADS);
+                t.normal(-1.0f, 0.0f, 0.0f);
+                t.tex(uu, v1); t.vertex(xx, 0.0f, -dd);
+                t.tex(uu, v1); t.vertex(xx, 0.0f, 0.0f);
+                t.tex(uu, v0); t.vertex(xx, 1.0f, 0.0f);
+                t.tex(uu, v0); t.vertex(xx, 1.0f, -dd);
+                t.end();
+            }
+
+            for (int i = 0; i < 16; ++i) {
+                float p = static_cast<float>(i) / 16.0f;
+                float uu = u1 + (u0 - u1) * p - 0.001953125f;
+                float xx = r * p + 0.0625f;
+
+                // Right edge
+                t.begin(GL_QUADS);
+                t.normal(1.0f, 0.0f, 0.0f);
+                t.tex(uu, v0); t.vertex(xx, 1.0f, -dd);
+                t.tex(uu, v0); t.vertex(xx, 1.0f, 0.0f);
+                t.tex(uu, v1); t.vertex(xx, 0.0f, 0.0f);
+                t.tex(uu, v1); t.vertex(xx, 0.0f, -dd);
+                t.end();
+            }
+
+            for (int i = 0; i < 16; ++i) {
+                float p = static_cast<float>(i) / 16.0f;
+                float vv = v1 + (v0 - v1) * p - 0.001953125f;
+                float yy = r * p + 0.0625f;
+
+                // Top edge
+                t.begin(GL_QUADS);
+                t.normal(0.0f, 1.0f, 0.0f);
+                t.tex(u1, vv); t.vertex(0.0f, yy, 0.0f);
+                t.tex(u0, vv); t.vertex(r, yy, 0.0f);
+                t.tex(u0, vv); t.vertex(r, yy, -dd);
+                t.tex(u1, vv); t.vertex(0.0f, yy, -dd);
+                t.end();
+            }
+
+            for (int i = 0; i < 16; ++i) {
+                float p = static_cast<float>(i) / 16.0f;
+                float vv = v1 + (v0 - v1) * p - 0.001953125f;
+                float yy = r * p;
+
+                // Bottom edge
+                t.begin(GL_QUADS);
+                t.normal(0.0f, -1.0f, 0.0f);
+                t.tex(u0, vv); t.vertex(r, yy, 0.0f);
+                t.tex(u1, vv); t.vertex(0.0f, yy, 0.0f);
+                t.tex(u1, vv); t.vertex(0.0f, yy, -dd);
+                t.tex(u0, vv); t.vertex(r, yy, -dd);
+                t.end();
+            }
+
+            glDisable(GL_RESCALE_NORMAL);
+        }
+    } else {
+        // Render item sprite (flat with thickness)
+        // Bind items.png for items (id >= 256)
+        Textures::getInstance().bind("resources/gui/items.png");
+
+        int icon = item.getIcon();
+        float u0 = (static_cast<float>(icon % 16 * 16) + 0.0f) / 256.0f;
+        float u1 = (static_cast<float>(icon % 16 * 16) + 15.99f) / 256.0f;
+        float v0 = (static_cast<float>(icon / 16 * 16) + 0.0f) / 256.0f;
+        float v1 = (static_cast<float>(icon / 16 * 16) + 15.99f) / 256.0f;
+
+        float r = 1.0f;
+        float xo = 0.0f;
+        float yo = 0.3f;
+        glEnable(GL_RESCALE_NORMAL);
+        glTranslatef(-xo, -yo, 0.0f);
+        float s = 1.5f;
+        glScalef(s, s, s);
+        glRotatef(50.0f, 0.0f, 1.0f, 0.0f);
+        glRotatef(335.0f, 0.0f, 0.0f, 1.0f);
+        glTranslatef(-0.9375f, -0.0625f, 0.0f);
+
+        float dd = 0.0625f;
+        Tesselator& t = Tesselator::getInstance();
+
+        // Front face
+        t.begin(GL_QUADS);
+        t.normal(0.0f, 0.0f, 1.0f);
+        t.tex(u1, v1); t.vertex(0.0f, 0.0f, 0.0f);
+        t.tex(u0, v1); t.vertex(r, 0.0f, 0.0f);
+        t.tex(u0, v0); t.vertex(r, 1.0f, 0.0f);
+        t.tex(u1, v0); t.vertex(0.0f, 1.0f, 0.0f);
+        t.end();
+
+        // Back face
+        t.begin(GL_QUADS);
+        t.normal(0.0f, 0.0f, -1.0f);
+        t.tex(u1, v0); t.vertex(0.0f, 1.0f, -dd);
+        t.tex(u0, v0); t.vertex(r, 1.0f, -dd);
+        t.tex(u0, v1); t.vertex(r, 0.0f, -dd);
+        t.tex(u1, v1); t.vertex(0.0f, 0.0f, -dd);
+        t.end();
+
+        // Side strips for thickness
+        for (int i = 0; i < 16; ++i) {
+            float p = static_cast<float>(i) / 16.0f;
+            float uu = u1 + (u0 - u1) * p - 0.001953125f;
+            float xx = r * p;
+
+            t.begin(GL_QUADS);
+            t.normal(-1.0f, 0.0f, 0.0f);
+            t.tex(uu, v1); t.vertex(xx, 0.0f, -dd);
+            t.tex(uu, v1); t.vertex(xx, 0.0f, 0.0f);
+            t.tex(uu, v0); t.vertex(xx, 1.0f, 0.0f);
+            t.tex(uu, v0); t.vertex(xx, 1.0f, -dd);
+            t.end();
+        }
+
+        for (int i = 0; i < 16; ++i) {
+            float p = static_cast<float>(i) / 16.0f;
+            float uu = u1 + (u0 - u1) * p - 0.001953125f;
+            float xx = r * p + 0.0625f;
+
+            t.begin(GL_QUADS);
+            t.normal(1.0f, 0.0f, 0.0f);
+            t.tex(uu, v0); t.vertex(xx, 1.0f, -dd);
+            t.tex(uu, v0); t.vertex(xx, 1.0f, 0.0f);
+            t.tex(uu, v1); t.vertex(xx, 0.0f, 0.0f);
+            t.tex(uu, v1); t.vertex(xx, 0.0f, -dd);
+            t.end();
+        }
+
+        for (int i = 0; i < 16; ++i) {
+            float p = static_cast<float>(i) / 16.0f;
+            float vv = v1 + (v0 - v1) * p - 0.001953125f;
+            float yy = r * p + 0.0625f;
+
+            t.begin(GL_QUADS);
+            t.normal(0.0f, 1.0f, 0.0f);
+            t.tex(u1, vv); t.vertex(0.0f, yy, 0.0f);
+            t.tex(u0, vv); t.vertex(r, yy, 0.0f);
+            t.tex(u0, vv); t.vertex(r, yy, -dd);
+            t.tex(u1, vv); t.vertex(0.0f, yy, -dd);
+            t.end();
+        }
+
+        for (int i = 0; i < 16; ++i) {
+            float p = static_cast<float>(i) / 16.0f;
+            float vv = v1 + (v0 - v1) * p - 0.001953125f;
+            float yy = r * p;
+
+            t.begin(GL_QUADS);
+            t.normal(0.0f, -1.0f, 0.0f);
+            t.tex(u0, vv); t.vertex(r, yy, 0.0f);
+            t.tex(u1, vv); t.vertex(0.0f, yy, 0.0f);
+            t.tex(u1, vv); t.vertex(0.0f, yy, -dd);
+            t.tex(u0, vv); t.vertex(r, yy, -dd);
+            t.end();
+        }
+
+        glDisable(GL_RESCALE_NORMAL);
+    }
+
+    glPopMatrix();
 }
 
 void GameRenderer::renderGui(float /*partialTick*/) {

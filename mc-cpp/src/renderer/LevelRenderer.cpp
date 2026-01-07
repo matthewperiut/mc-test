@@ -5,6 +5,7 @@
 #include "entity/ItemEntity.hpp"
 #include "entity/LocalPlayer.hpp"
 #include "world/tile/Tile.hpp"
+#include "item/Item.hpp"
 #include <GL/glew.h>
 #include <algorithm>
 #include <cmath>
@@ -786,11 +787,9 @@ void LevelRenderer::renderEntities(float partialTick) {
     double camY = player->getInterpolatedY(partialTick) + player->eyeHeight;
     double camZ = player->getInterpolatedZ(partialTick);
 
-    // Bind terrain texture for item rendering
-    Textures::getInstance().bind("resources/terrain.png");
-
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glEnable(GL_RESCALE_NORMAL);
 
     Tesselator& t = Tesselator::getInstance();
 
@@ -809,59 +808,116 @@ void LevelRenderer::renderEntities(float partialTick) {
         double dz = iz - camZ;
         if (dx * dx + dy * dy + dz * dz > 64 * 64) continue;
 
-        // Get tile for this item
-        Tile* tile = nullptr;
-        if (item->itemId > 0 && item->itemId < 256) {
-            tile = Tile::tiles[item->itemId];
-        }
-        if (!tile) continue;
-
         // Java: bob = sin((age + partialTick) / 10.0f + bobOffs) * 0.1f + 0.1f
         float bob = std::sin((static_cast<float>(item->age) + partialTick) / 10.0f + item->bobOffset) * 0.1f + 0.1f;
 
         // Java: spin = ((age + partialTick) / 20.0f + bobOffs) * (180.0f / PI)
         float spin = ((static_cast<float>(item->age) + partialTick) / 20.0f + item->bobOffset) * 57.29578f;
 
-        glPushMatrix();
-        // Position at item location with bob offset
-        glTranslated(ix, iy + bob + 0.25, iz);  // +0.25 to raise block center above ground
-
-        // Spin rotation around Y axis (like Java)
-        glRotatef(spin, 0.0f, 1.0f, 0.0f);
-
-        // Scale for dropped item (Java uses 0.25f for cube blocks)
-        float scale = 0.25f;
-        glScalef(scale, scale, scale);
-
-        // Render 3D block using Tesselator
-        t.begin(GL_QUADS);
-        tileRenderer.renderBlockItem(tile, 1.0f);
-        t.end();
-
-        // Render multiple copies for stacks > 1 (like Java)
+        // Calculate number of copies based on stack size (Java ItemRenderer)
         int copies = 1;
         if (item->count > 1) copies = 2;
         if (item->count > 5) copies = 3;
         if (item->count > 20) copies = 4;
 
-        for (int c = 1; c < copies; c++) {
-            glPushMatrix();
-            // Offset each copy slightly (Java uses random offsets)
-            float offsetX = (std::sin(c * 1.5f) * 0.1f);
-            float offsetY = (c * 0.1f);
-            float offsetZ = (std::cos(c * 1.5f) * 0.1f);
-            glTranslatef(offsetX, offsetY, offsetZ);
+        // Seed random for consistent offsets per entity
+        unsigned int randomSeed = 187;
 
-            t.begin(GL_QUADS);
-            tileRenderer.renderBlockItem(tile, 1.0f);
-            t.end();
-            glPopMatrix();
+        glPushMatrix();
+        // Position at item location with bob offset
+        glTranslated(ix, iy + bob, iz);
+
+        if (item->itemId > 0 && item->itemId < 256) {
+            // Render as 3D block
+            Tile* tile = Tile::tiles[item->itemId];
+            if (tile && TileRenderer::canRender(static_cast<int>(tile->renderShape))) {
+                Textures::getInstance().bind("resources/terrain.png");
+
+                // Spin rotation around Y axis
+                glRotatef(spin, 0.0f, 1.0f, 0.0f);
+
+                // Scale for dropped block (Java: 0.25 for cubes, 0.5 for non-cubes)
+                float scale = 0.25f;
+                if (tile->renderShape != TileShape::CUBE) {
+                    scale = 0.5f;
+                }
+                glScalef(scale, scale, scale);
+
+                for (int c = 0; c < copies; c++) {
+                    glPushMatrix();
+                    if (c > 0) {
+                        // Random offset for stacked items
+                        float xo = ((randomSeed = randomSeed * 1103515245 + 12345) % 1000 / 500.0f - 1.0f) * 0.2f / scale;
+                        float yo = ((randomSeed = randomSeed * 1103515245 + 12345) % 1000 / 500.0f - 1.0f) * 0.2f / scale;
+                        float zo = ((randomSeed = randomSeed * 1103515245 + 12345) % 1000 / 500.0f - 1.0f) * 0.2f / scale;
+                        glTranslatef(xo, yo, zo);
+                    }
+                    t.begin(GL_QUADS);
+                    tileRenderer.renderBlockItem(tile, 1.0f);
+                    t.end();
+                    glPopMatrix();
+                }
+            } else {
+                // Non-cube block - render as flat sprite from terrain.png
+                Textures::getInstance().bind("resources/terrain.png");
+                int icon = tile ? tile->getTexture(0) : 0;
+                renderDroppedItemSprite(icon, copies, player->yRot, randomSeed);
+            }
+        } else if (item->itemId >= 256) {
+            // Render as flat item sprite from items.png
+            Textures::getInstance().bind("resources/gui/items.png");
+            Item* itemDef = Item::byId(item->itemId);
+            int icon = itemDef ? itemDef->getIcon() : 0;
+            renderDroppedItemSprite(icon, copies, player->yRot, randomSeed);
         }
 
         glPopMatrix();
     }
 
+    glDisable(GL_RESCALE_NORMAL);
     glDisable(GL_BLEND);
+}
+
+void LevelRenderer::renderDroppedItemSprite(int icon, int copies, float playerYRot, unsigned int randomSeed) {
+    // Calculate UV coordinates (matching Java ItemRenderer)
+    float u0 = static_cast<float>(icon % 16 * 16) / 256.0f;
+    float u1 = (static_cast<float>(icon % 16 * 16) + 16.0f) / 256.0f;
+    float v0 = static_cast<float>(icon / 16 * 16) / 256.0f;
+    float v1 = (static_cast<float>(icon / 16 * 16) + 16.0f) / 256.0f;
+
+    float r = 1.0f;
+    float xo = 0.5f;
+    float yo = 0.25f;
+
+    // Scale for dropped item sprite
+    glScalef(0.5f, 0.5f, 0.5f);
+
+    Tesselator& t = Tesselator::getInstance();
+
+    for (int c = 0; c < copies; c++) {
+        glPushMatrix();
+        if (c > 0) {
+            // Random offset for stacked items
+            float _xo = ((randomSeed = randomSeed * 1103515245 + 12345) % 1000 / 500.0f - 1.0f) * 0.3f;
+            float _yo = ((randomSeed = randomSeed * 1103515245 + 12345) % 1000 / 500.0f - 1.0f) * 0.3f;
+            float _zo = ((randomSeed = randomSeed * 1103515245 + 12345) % 1000 / 500.0f - 1.0f) * 0.3f;
+            glTranslatef(_xo, _yo, _zo);
+        }
+
+        // Billboard toward player (rotate to face camera)
+        glRotatef(180.0f - playerYRot, 0.0f, 1.0f, 0.0f);
+
+        // Render flat sprite quad
+        t.begin(GL_QUADS);
+        t.normal(0.0f, 1.0f, 0.0f);
+        t.tex(u0, v1); t.vertex(0.0f - xo, 0.0f - yo, 0.0f);
+        t.tex(u1, v1); t.vertex(r - xo, 0.0f - yo, 0.0f);
+        t.tex(u1, v0); t.vertex(r - xo, 1.0f - yo, 0.0f);
+        t.tex(u0, v0); t.vertex(0.0f - xo, 1.0f - yo, 0.0f);
+        t.end();
+
+        glPopMatrix();
+    }
 }
 
 } // namespace mc

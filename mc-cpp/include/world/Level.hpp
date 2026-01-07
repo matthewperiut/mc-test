@@ -86,6 +86,7 @@ public:
     // Lighting
     int getSkyLight(int x, int y, int z) const;
     int getBlockLight(int x, int y, int z) const;
+    int getSkyDarken() const;  // How much to darken sky light based on time of day (0-11)
     float getBrightness(int x, int y, int z) const;
     void updateLightAt(int x, int y, int z);
     void updateLights();

@@ -5,10 +5,12 @@
 namespace mc {
 
 class Player;
+class Item;
+class Tile;
 
 // Represents a stack of items
 struct ItemStack {
-    int id;      // Item/block ID (0 = empty)
+    int id;      // Item/block ID (0 = empty, 1-255 = block, 256+ = item)
     int count;   // Stack size
     int damage;  // Metadata/damage value
 
@@ -17,6 +19,22 @@ struct ItemStack {
         : id(id), count(count), damage(damage) {}
 
     bool isEmpty() const { return id <= 0 || count <= 0; }
+
+    // Check if this is a block (id < 256) or item (id >= 256)
+    bool isBlock() const { return id > 0 && id < 256; }
+    bool isItem() const { return id >= 256; }
+
+    // Get the Item instance (nullptr if block or empty)
+    Item* getItem() const;
+
+    // Get the Tile instance (nullptr if item or empty)
+    Tile* getTile() const;
+
+    // Get icon index for rendering (from items.png for items, terrain.png for blocks)
+    int getIcon() const;
+
+    // Get aux value (metadata)
+    int getAuxValue() const { return damage; }
 
     // Max stack size (64 for most items, 16 for some, 1 for tools)
     int getMaxStackSize() const { return 64; }

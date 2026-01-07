@@ -1,7 +1,44 @@
 #include "item/Inventory.hpp"
+#include "item/Item.hpp"
 #include "entity/Player.hpp"
+#include "world/tile/Tile.hpp"
 
 namespace mc {
+
+// ItemStack method implementations
+Item* ItemStack::getItem() const {
+    if (id >= 256) {
+        return Item::byId(id);
+    }
+    return nullptr;
+}
+
+Tile* ItemStack::getTile() const {
+    if (id > 0 && id < 256) {
+        return Tile::tiles[id];
+    }
+    return nullptr;
+}
+
+int ItemStack::getIcon() const {
+    if (id <= 0) return 0;
+
+    if (id < 256) {
+        // Block - get texture from Tile
+        Tile* tile = Tile::tiles[id];
+        if (tile) {
+            return tile->getTexture(0);  // Front face texture
+        }
+        return 0;
+    } else {
+        // Item - get icon from Item
+        Item* item = Item::byId(id);
+        if (item) {
+            return item->getIcon();
+        }
+        return 0;
+    }
+}
 
 Inventory::Inventory(Player* player)
     : selected(0)
@@ -14,9 +51,9 @@ Inventory::Inventory(Player* player)
     items[3] = ItemStack(2, 64);  // Grass (will drop dirt though)
     items[4] = ItemStack(5, 64);  // Planks
     items[5] = ItemStack(17, 64); // Wood log
-    items[6] = ItemStack(24, 64); // Sandstone
+    items[6] = ItemStack(280, 64); // Stick (item id 280 = 256 + 24)
     items[7] = ItemStack(45, 64); // Bricks
-    items[8] = ItemStack(49, 64); // Obsidian
+    items[8] = ItemStack();       // Empty slot for hand testing
 }
 
 ItemStack& Inventory::getItem(int slot) {
