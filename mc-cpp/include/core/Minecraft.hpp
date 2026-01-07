@@ -60,6 +60,11 @@ public:
     int ticks;           // Game tick counter (20 ticks/sec), matching Java Minecraft.ticks
     int lastClickTick;   // Last tick when mouse was clicked, for placement cooldown
 
+    // Block breaking state (for tick-based processing)
+    bool isBreakingBlock;       // Whether left mouse is held for breaking
+    int breakingX, breakingY, breakingZ;  // Block being broken
+    int breakingFace;           // Face being hit
+
     // Debug
     bool showDebug;
 

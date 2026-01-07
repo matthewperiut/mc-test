@@ -3,6 +3,13 @@
 #include <iostream>
 #include <fstream>
 #include <cstring>
+#include <filesystem>
+#include <random>
+#include <algorithm>
+
+// Include stb_vorbis for OGG decoding
+#define STB_VORBIS_HEADER_ONLY
+#include "stb_vorbis.c"
 
 namespace mc {
 
@@ -19,6 +26,7 @@ SoundEngine::SoundEngine()
     , masterVolume(1.0f)
     , musicVolume(1.0f)
     , soundVolume(1.0f)
+    , soundBasePath("../../resources")  // From build/ to mc-deobf/resources/
 {
 }
 
@@ -47,6 +55,9 @@ bool SoundEngine::init() {
 
     alcMakeContextCurrent(context);
 
+    // Set distance model to match Java's Paul's Sound System behavior
+    alDistanceModel(AL_INVERSE_DISTANCE_CLAMPED);
+
     // Create source pool
     sources.resize(MAX_SOURCES);
     alGenSources(MAX_SOURCES, sources.data());
@@ -60,6 +71,9 @@ bool SoundEngine::init() {
 
     initialized = true;
     std::cout << "OpenAL initialized successfully" << std::endl;
+
+    // Scan for sound variants
+    scanSoundVariants();
 
     return true;
 }
@@ -102,16 +116,119 @@ void SoundEngine::destroy() {
     initialized = false;
 }
 
-SoundBuffer* SoundEngine::loadSound(const std::string& path) {
-    auto it = soundCache.find(path);
-    if (it != soundCache.end()) {
-        return &it->second;
+void SoundEngine::scanSoundVariants() {
+    // Scan sound directories to find variants
+    // Only "sound" and "newsound" are used in Java Beta 1.2 (NOT sound3)
+    std::vector<std::string> soundDirs = {
+        soundBasePath + "/sound",
+        soundBasePath + "/newsound"
+    };
+
+    for (const auto& baseDir : soundDirs) {
+        if (!std::filesystem::exists(baseDir)) continue;
+
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(baseDir)) {
+            if (!entry.is_regular_file()) continue;
+
+            std::string path = entry.path().string();
+            std::string ext = entry.path().extension().string();
+
+            if (ext != ".ogg" && ext != ".wav") continue;
+
+            // Convert path to sound name
+            // e.g., "../resources/sound/step/grass1.ogg" -> "step.grass"
+            std::string relativePath = entry.path().lexically_relative(baseDir).string();
+
+            // Remove extension
+            size_t dotPos = relativePath.rfind('.');
+            if (dotPos != std::string::npos) {
+                relativePath = relativePath.substr(0, dotPos);
+            }
+
+            // Remove trailing digits (variant number)
+            while (!relativePath.empty() && std::isdigit(relativePath.back())) {
+                relativePath.pop_back();
+            }
+
+            // Replace path separators with dots
+            std::replace(relativePath.begin(), relativePath.end(), '/', '.');
+            std::replace(relativePath.begin(), relativePath.end(), '\\', '.');
+
+            // Add to variants map
+            soundVariants[relativePath].push_back(path);
+        }
     }
 
+    std::cout << "Scanned " << soundVariants.size() << " sound categories" << std::endl;
+}
+
+std::string SoundEngine::resolveSoundPath(const std::string& soundName) {
+    auto it = soundVariants.find(soundName);
+    if (it == soundVariants.end() || it->second.empty()) {
+        // Try direct path (only sound and newsound folders, NOT sound3)
+        std::string directPath = soundBasePath + "/sound/" + soundName + ".ogg";
+        if (std::filesystem::exists(directPath)) {
+            return directPath;
+        }
+        // Try with slash replacement
+        std::string altName = soundName;
+        std::replace(altName.begin(), altName.end(), '.', '/');
+        directPath = soundBasePath + "/sound/" + altName + ".ogg";
+        if (std::filesystem::exists(directPath)) {
+            return directPath;
+        }
+        directPath = soundBasePath + "/newsound/" + altName + ".ogg";
+        if (std::filesystem::exists(directPath)) {
+            return directPath;
+        }
+        return "";
+    }
+
+    // Pick random variant
+    static std::random_device rd;
+    static std::mt19937 gen(rd());
+    std::uniform_int_distribution<size_t> dist(0, it->second.size() - 1);
+    return it->second[dist(gen)];
+}
+
+SoundBuffer* SoundEngine::loadOgg(const std::string& path) {
+    int channels, sampleRate;
+    short* output;
+    int samples = stb_vorbis_decode_filename(path.c_str(), &channels, &sampleRate, &output);
+
+    if (samples <= 0) {
+        std::cerr << "Failed to decode OGG file: " << path << std::endl;
+        return nullptr;
+    }
+
+    // Determine format
+    ALenum format;
+    if (channels == 1) {
+        format = AL_FORMAT_MONO16;
+    } else {
+        format = AL_FORMAT_STEREO16;
+    }
+
+    // Create buffer
+    ALuint buffer;
+    alGenBuffers(1, &buffer);
+    alBufferData(buffer, format, output, samples * channels * sizeof(short), sampleRate);
+
+    free(output);
+
+    SoundBuffer soundBuffer;
+    soundBuffer.buffer = buffer;
+    soundBuffer.channels = channels;
+    soundBuffer.sampleRate = sampleRate;
+
+    soundCache[path] = soundBuffer;
+    return &soundCache[path];
+}
+
+SoundBuffer* SoundEngine::loadWav(const std::string& path) {
     // Load WAV file (simplified - only supports basic WAV)
     std::ifstream file(path, std::ios::binary);
     if (!file.is_open()) {
-        std::cerr << "Failed to open sound file: " << path << std::endl;
         return nullptr;
     }
 
@@ -119,7 +236,6 @@ SoundBuffer* SoundEngine::loadSound(const std::string& path) {
     char riff[4];
     file.read(riff, 4);
     if (std::strncmp(riff, "RIFF", 4) != 0) {
-        std::cerr << "Not a valid WAV file: " << path << std::endl;
         return nullptr;
     }
 
@@ -130,7 +246,6 @@ SoundBuffer* SoundEngine::loadSound(const std::string& path) {
     char wave[4];
     file.read(wave, 4);
     if (std::strncmp(wave, "WAVE", 4) != 0) {
-        std::cerr << "Not a valid WAV file: " << path << std::endl;
         return nullptr;
     }
 
@@ -199,6 +314,26 @@ SoundBuffer* SoundEngine::loadSound(const std::string& path) {
     return nullptr;
 }
 
+SoundBuffer* SoundEngine::loadSound(const std::string& path) {
+    auto it = soundCache.find(path);
+    if (it != soundCache.end()) {
+        return &it->second;
+    }
+
+    // Check file extension
+    std::string ext = std::filesystem::path(path).extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+
+    if (ext == ".ogg") {
+        return loadOgg(path);
+    } else if (ext == ".wav") {
+        return loadWav(path);
+    }
+
+    std::cerr << "Unsupported audio format: " << path << std::endl;
+    return nullptr;
+}
+
 ALuint SoundEngine::getAvailableSource() {
     for (ALuint source : sources) {
         ALint state;
@@ -210,6 +345,30 @@ ALuint SoundEngine::getAvailableSource() {
 
     // All sources busy, return first one (will interrupt oldest sound)
     return sources[0];
+}
+
+void SoundEngine::playSound(const std::string& soundName, float volume, float pitch) {
+    if (!initialized) return;
+
+    std::string path = resolveSoundPath(soundName);
+    if (path.empty()) {
+        // Don't spam console for missing sounds
+        return;
+    }
+
+    play(path, volume, pitch);
+}
+
+void SoundEngine::playSound3D(const std::string& soundName, float x, float y, float z,
+                               float volume, float pitch) {
+    if (!initialized) return;
+
+    std::string path = resolveSoundPath(soundName);
+    if (path.empty()) {
+        return;
+    }
+
+    play3D(path, x, y, z, volume, pitch);
 }
 
 void SoundEngine::play(const std::string& sound, float volume, float pitch) {
@@ -238,13 +397,24 @@ void SoundEngine::play3D(const std::string& sound, float x, float y, float z,
 
     ALuint source = getAvailableSource();
 
+    // Match Java's behavior: if volume > 1.0, extend audible distance but cap gain at 1.0
+    float dist = 16.0f;  // Java's SOUND_DISTANCE
+    if (volume > 1.0f) {
+        dist *= volume;
+        volume = 1.0f;
+    }
+
     alSourcei(source, AL_BUFFER, buffer->buffer);
-    alSourcef(source, AL_GAIN, volume * soundVolume * masterVolume);
+    // Apply volume - boost by 2x to compensate for OpenAL vs Paul's Sound System differences
+    alSourcef(source, AL_GAIN, volume * soundVolume * masterVolume * 2.0f);
     alSourcef(source, AL_PITCH, pitch);
     alSourcei(source, AL_SOURCE_RELATIVE, AL_FALSE);
     alSource3f(source, AL_POSITION, x, y, z);
-    alSourcef(source, AL_REFERENCE_DISTANCE, 1.0f);
+
+    // Set attenuation to match Java's Paul's Sound System
+    alSourcef(source, AL_REFERENCE_DISTANCE, dist);
     alSourcef(source, AL_ROLLOFF_FACTOR, 1.0f);
+    alSourcef(source, AL_MAX_DISTANCE, dist * 4.0f);
 
     alSourcePlay(source);
 }

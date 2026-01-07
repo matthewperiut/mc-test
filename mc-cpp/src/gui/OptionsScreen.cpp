@@ -4,6 +4,7 @@
 #include "core/Minecraft.hpp"
 #include "core/Options.hpp"
 #include "renderer/LevelRenderer.hpp"
+#include "audio/SoundEngine.hpp"
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <cmath>
@@ -295,6 +296,8 @@ void OptionsScreen::mouseClicked(int button, int action) {
                     if (btn->id == BUTTON_MUSIC || btn->id == BUTTON_SOUND || btn->id == BUTTON_SENSITIVITY) {
                         continue;
                     }
+                    // Play click sound (matching Java playUI: volume * 0.25)
+                    SoundEngine::getInstance().playSound("random.click", 0.25f, 1.0f);
                     buttonClicked(btn->id);
                     break;
                 }

@@ -22,16 +22,17 @@ GameRenderer::GameRenderer(Minecraft* minecraft)
     , fogRed(0.5f), fogGreen(0.8f), fogBlue(1.0f)
     , fogStart(20.0f), fogEnd(80.0f)
     , bobbing(0), tilt(0)
-    , itemHeight(1.0f), oItemHeight(1.0f)
-    , lastSelectedSlot(-1)
+    , height(0.0f), oHeight(0.0f)  // Java: height = 0.0F, oHeight = 0.0F
+    , lastSlot(-1)                  // Java: lastSlot = -1
+    , selectedItem()                // Java: selectedItem = null (empty ItemStack)
     , screenWidth(854), screenHeight(480)
 {
 }
 
-void GameRenderer::resize(int width, int height) {
-    screenWidth = width;
-    screenHeight = height;
-    glViewport(0, 0, width, height);
+void GameRenderer::resize(int w, int h) {
+    screenWidth = w;
+    screenHeight = h;
+    glViewport(0, 0, w, h);
 }
 
 void GameRenderer::render(float partialTick) {
@@ -97,8 +98,9 @@ void GameRenderer::orientCamera(float partialTick) {
     glRotatef(yaw + 180.0f, 0.0f, 1.0f, 0.0f);
 
     // Apply camera position (at eye level)
+    // Java: y + eyeHeight - ySlideOffset (ySlideOffset provides smooth sneaking animation)
     double eyeX = player->getInterpolatedX(partialTick);
-    double eyeY = player->getInterpolatedY(partialTick) + player->eyeHeight;
+    double eyeY = player->getInterpolatedY(partialTick) + player->eyeHeight - player->getInterpolatedYSlideOffset(partialTick);
     double eyeZ = player->getInterpolatedZ(partialTick);
 
     glTranslated(-eyeX, -eyeY, -eyeZ);
@@ -436,41 +438,75 @@ void GameRenderer::renderHitOutline() {
 }
 
 void GameRenderer::tick() {
-    // Update item switch animation (matching Java ItemInHandRenderer.tick)
-    oItemHeight = itemHeight;
+    // Matching Java ItemInHandRenderer.tick() exactly
+    this->oHeight = this->height;
 
     LocalPlayer* player = minecraft->player;
     if (!player || !player->inventory) return;
 
-    int currentSlot = player->inventory->selected;
-    (void)player->inventory->getSelected();  // Referenced later for item changes
+    ItemStack selected = player->inventory->getSelected();
 
-    // Check if slot changed
-    bool slotChanged = (lastSelectedSlot != currentSlot);
+    // Java: boolean matches = this.lastSlot == player.inventory.selected && selected == this.selectedItem;
+    bool matches = (this->lastSlot == player->inventory->selected) &&
+                   (selected.id == this->selectedItem.id && selected.damage == this->selectedItem.damage);
 
-    // For now, we only care if the slot changed
-    float targetHeight = 1.0f;
-    if (slotChanged) {
-        targetHeight = 0.0f;  // Drop the item when switching
+    // Java: if (this.selectedItem == null && selected == null) { matches = true; }
+    if (this->selectedItem.isEmpty() && selected.isEmpty()) {
+        matches = true;
     }
 
-    // Smooth transition
-    float maxDelta = 0.4f;
-    float delta = targetHeight - itemHeight;
-    delta = std::max(-maxDelta, std::min(maxDelta, delta));
-    itemHeight += delta;
-
-    // Update last slot when item is lowered
-    if (itemHeight < 0.1f) {
-        lastSelectedSlot = currentSlot;
+    // Java: if (selected != null && this.selectedItem != null && selected != this.selectedItem && selected.id == this.selectedItem.id)
+    // If different stack but same item ID, update reference and consider it a match
+    if (!selected.isEmpty() && !this->selectedItem.isEmpty() &&
+        !(selected.id == this->selectedItem.id && selected.damage == this->selectedItem.damage && selected.count == this->selectedItem.count) &&
+        selected.id == this->selectedItem.id) {
+        this->selectedItem = selected;
+        matches = true;
     }
+
+    // Java: float max = 0.4F;
+    float max = 0.4f;
+
+    // Java: float tHeight = (float)(matches ? 1 : 0);
+    float tHeight = matches ? 1.0f : 0.0f;
+
+    // Java: float dd = tHeight - this.height;
+    float dd = tHeight - this->height;
+
+    // Java: if (dd < -max) { dd = -max; }
+    if (dd < -max) {
+        dd = -max;
+    }
+
+    // Java: if (dd > max) { dd = max; }
+    if (dd > max) {
+        dd = max;
+    }
+
+    // Java: this.height += dd;
+    this->height += dd;
+
+    // Java: if (this.height < 0.1F) { this.selectedItem = selected; this.lastSlot = player.inventory.selected; }
+    if (this->height < 0.1f) {
+        this->selectedItem = selected;
+        this->lastSlot = player->inventory->selected;
+    }
+}
+
+void GameRenderer::itemPlaced() {
+    // Java ItemInHandRenderer.itemPlaced(): this.height = 0.0F
+    this->height = 0.0f;
 }
 
 void GameRenderer::renderHand(float partialTick) {
     LocalPlayer* player = minecraft->player;
     if (!player || !player->inventory) return;
 
-    const ItemStack& selected = player->inventory->getSelected();
+    // Java: float h = this.oHeight + (this.height - this.oHeight) * a;
+    float h = this->oHeight + (this->height - this->oHeight) * partialTick;
+
+    // Java: ItemInstance item = this.selectedItem;
+    ItemStack item = this->selectedItem;
 
     // Clear depth buffer so hand renders in front of everything (matching Java)
     glClear(GL_DEPTH_BUFFER_BIT);
@@ -561,11 +597,8 @@ void GameRenderer::renderHand(float partialTick) {
     }
     glColor4f(br, br, br, 1.0f);
 
-    // Get interpolated item height for smooth animation (Java line 133)
-    float h = oItemHeight + (itemHeight - oItemHeight) * partialTick;
-
-    // Check if holding an item
-    if (!selected.isEmpty()) {
+    // Check if holding an item (Java: if (item != null))
+    if (!item.isEmpty()) {
         // Render held item (matching Java ItemInHandRenderer.render with item)
         glPushMatrix();
 
@@ -599,13 +632,13 @@ void GameRenderer::renderHand(float partialTick) {
         glScalef(s, s, s);
 
         // Check if item should be mirrored
-        Item* item = selected.getItem();
-        if (item && item->isMirroredArt()) {
+        Item* itemPtr = item.getItem();
+        if (itemPtr && itemPtr->isMirroredArt()) {
             glRotatef(180.0f, 0.0f, 1.0f, 0.0f);
         }
 
         // Render the item
-        renderItem(selected);
+        renderItem(item);
 
         glDisable(GL_RESCALE_NORMAL);
         glPopMatrix();

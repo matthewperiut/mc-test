@@ -62,8 +62,23 @@ bool GameMode::destroyBlock(int x, int y, int z, int /*face*/) {
     bool changed = level->setTile(x, y, z, 0);
 
     if (tile && changed) {
-        // Play break sound
-        // SoundEngine::getInstance().play(tile->soundType.getBreakSound(), ...);
+        // Play break sound (matching Java GameMode line 33)
+        // Java: soundEngine.play(oldTile.soundType.getBreakSound(), x+0.5, y+0.5, z+0.5, (volume+1.0)/2.0, pitch*0.8)
+        // getBreakSound() returns "step." + name by default, but glass returns "random.glass", sand returns "step.gravel"
+        std::string soundName;
+        if (tile->id == Tile::GLASS) {
+            soundName = "random.glass";
+        } else if (tile->id == Tile::SAND) {
+            soundName = "step.gravel";
+        } else {
+            soundName = tile->stepSound.empty() ? "step.stone" : "step." + tile->stepSound;
+        }
+        SoundEngine::getInstance().playSound3D(
+            soundName,
+            x + 0.5f, y + 0.5f, z + 0.5f,
+            (tile->stepSoundVolume + 1.0f) / 2.0f,
+            tile->stepSoundPitch * 0.8f
+        );
 
         // Tile destroy callback
         tile->destroy(level, x, y, z, 0);
@@ -154,8 +169,14 @@ void SurvivalMode::continueDestroyBlock(int x, int y, int z, int face) {
         // Play dig sound every 4 ticks
         // Java: if (this.destroyTicks % 4.0F == 0.0F)
         if (static_cast<int>(destroyTicks) % 4 == 0) {
-            // Play step sound at reduced volume
-            // SoundEngine::getInstance().play(tile->soundType.getStepSound(), ...);
+            // Play step sound at reduced volume (matching Java: (volume + 1.0) / 8.0, pitch * 0.5)
+            std::string soundName = tile->stepSound.empty() ? "step.stone" : "step." + tile->stepSound;
+            SoundEngine::getInstance().playSound3D(
+                soundName,
+                x + 0.5f, y + 0.5f, z + 0.5f,
+                (tile->stepSoundVolume + 1.0f) / 8.0f,
+                tile->stepSoundPitch * 0.5f
+            );
         }
 
         destroyTicks++;

@@ -58,11 +58,15 @@ void LocalPlayer::processInput() {
     if (keyLeft) moveStrafe += 1.0f;
     if (keyRight) moveStrafe -= 1.0f;
 
+    // Sneaking - apply 0.3x speed multiplier to input axes (matching Java KeyboardInput)
+    setSneaking(keySneak);
+    if (sneaking) {
+        moveStrafe *= 0.3f;
+        moveForward *= 0.3f;
+    }
+
     // Running
     running = keyUp && !keySneak && onGround;
-
-    // Sneaking
-    setSneaking(keySneak);
 
     // Jumping
     if (keyJump) {

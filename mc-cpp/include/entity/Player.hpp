@@ -70,6 +70,7 @@ public:
     // State
     void setRunning(bool running);
     void setSneaking(bool sneaking);
+    bool isSneaking() const override { return sneaking; }
     bool canFly() const { return creative || flying; }
 
     // Animation

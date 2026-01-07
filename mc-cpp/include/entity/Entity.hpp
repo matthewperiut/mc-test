@@ -40,9 +40,11 @@ public:
     // Fall damage
     float fallDistance;
 
-    // Walk distance (for view bobbing oscillation)
+    // Walk distance (for view bobbing oscillation and step sounds)
     float walkDist;
     float oWalkDist;
+    int nextStep;  // Step sound threshold
+    bool makeStepSound;  // Whether entity makes step sounds
 
     // Timing
     int tickCount;
@@ -52,6 +54,8 @@ public:
     bool removed;
     float heightOffset;
     float eyeHeight;
+    float ySlideOffset;      // Java: used for sneaking camera offset, decays each tick
+    float prevYSlideOffset;  // Previous frame for interpolation
     bool noClip;  // Noclip mode - no collision detection
 
     // Block placement check (Java: blocksBuilding)
@@ -97,6 +101,7 @@ public:
     double getInterpolatedZ(float partialTick) const;
     float getInterpolatedYRot(float partialTick) const;
     float getInterpolatedXRot(float partialTick) const;
+    float getInterpolatedYSlideOffset(float partialTick) const;
 
     // Distance calculations
     double distanceTo(const Entity& other) const;
@@ -114,6 +119,7 @@ public:
     virtual bool isPickable() const { return false; }
     virtual bool isPushable() const { return false; }
     virtual bool isAlive() const { return !removed; }
+    virtual bool isSneaking() const { return false; }
 
     // Rendering
     virtual float getShadowRadius() const { return bbWidth; }

@@ -2,6 +2,7 @@
 
 #include "phys/HitResult.hpp"
 #include "renderer/TileRenderer.hpp"
+#include "item/Inventory.hpp"  // For ItemStack
 #include <memory>
 
 namespace mc {
@@ -9,7 +10,6 @@ namespace mc {
 class Minecraft;
 class Level;
 class LocalPlayer;
-struct ItemStack;
 
 class GameRenderer {
 public:
@@ -30,10 +30,11 @@ public:
     float bobbing;
     float tilt;
 
-    // Item in hand animation
-    float itemHeight;      // Current item height (0=lowered, 1=raised)
-    float oItemHeight;     // Previous item height for interpolation
-    int lastSelectedSlot;  // Last selected hotbar slot
+    // Item in hand animation (matching Java ItemInHandRenderer exactly)
+    float height;           // Current item height (0=lowered, 1=raised) - Java: height
+    float oHeight;          // Previous item height for interpolation - Java: oHeight
+    int lastSlot;           // Last selected hotbar slot - Java: lastSlot
+    ItemStack selectedItem; // Item currently being rendered (only changes when hand is down) - Java: selectedItem
 
     // Screen dimensions
     int screenWidth, screenHeight;
@@ -46,6 +47,7 @@ public:
     // Main render
     void render(float partialTick);
     void tick();  // Update per-tick animations
+    void itemPlaced();  // Called when item is placed, triggers hand-down animation
 
     // Setup
     void setupCamera(float partialTick);

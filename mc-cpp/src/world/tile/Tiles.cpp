@@ -31,6 +31,7 @@ class StoneTile : public Tile {
 public:
     StoneTile() : Tile(STONE, 1) {
         setHardness(1.5f);
+        setStepSound("stone", 1.0f, 1.0f);
         setName("Stone");
     }
 };
@@ -73,6 +74,7 @@ class CobblestoneTile : public Tile {
 public:
     CobblestoneTile() : Tile(COBBLESTONE, 16) {
         setHardness(2.0f);
+        setStepSound("stone", 1.0f, 1.0f);
         setName("Cobblestone");
     }
 };
@@ -140,6 +142,7 @@ public:
         setLightOpacity(false);
         setTransparent(true);
         solid = false;
+        setStepSound("wood", 1.0f, 1.0f);
         setName("Torch");
     }
 
@@ -155,6 +158,7 @@ public:
     BedrockTile() : Tile(BEDROCK, 17) {
         setHardness(-1.0f);  // Unbreakable
         setResistance(6000000.0f);
+        setStepSound("stone", 1.0f, 1.0f);
         setName("Bedrock");
     }
 };
@@ -163,6 +167,7 @@ class GoldOreTile : public Tile {
 public:
     GoldOreTile() : Tile(GOLD_ORE, 32) {
         setHardness(3.0f);
+        setStepSound("stone", 1.0f, 1.0f);
         setName("Gold Ore");
     }
 };
@@ -171,6 +176,7 @@ class IronOreTile : public Tile {
 public:
     IronOreTile() : Tile(IRON_ORE, 33) {
         setHardness(3.0f);
+        setStepSound("stone", 1.0f, 1.0f);
         setName("Iron Ore");
     }
 };
@@ -179,6 +185,7 @@ class CoalOreTile : public Tile {
 public:
     CoalOreTile() : Tile(COAL_ORE, 34) {
         setHardness(3.0f);
+        setStepSound("stone", 1.0f, 1.0f);
         setName("Coal Ore");
     }
 };
@@ -187,6 +194,7 @@ class DiamondOreTile : public Tile {
 public:
     DiamondOreTile() : Tile(DIAMOND_ORE, 50) {
         setHardness(3.0f);
+        setStepSound("stone", 1.0f, 1.0f);
         setName("Diamond Ore");
     }
 };
@@ -196,6 +204,7 @@ public:
     BrickTile() : Tile(BRICK, 7) {
         setHardness(2.0f);
         setResistance(6.0f);
+        setStepSound("stone", 1.0f, 1.0f);
         setName("Bricks");
     }
 };
@@ -234,6 +243,7 @@ public:
     ObsidianTile() : Tile(OBSIDIAN, 37) {
         setHardness(50.0f);
         setResistance(2000.0f);
+        setStepSound("stone", 1.0f, 1.0f);
         setName("Obsidian");
     }
 };
@@ -267,6 +277,7 @@ class GlowstoneTile : public Tile {
 public:
     GlowstoneTile() : Tile(GLOWSTONE, 105) {
         setHardness(0.3f);
+        setStepSound("stone", 1.0f, 1.0f);
         setName("Glowstone");
     }
 

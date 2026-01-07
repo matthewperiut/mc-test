@@ -60,6 +60,13 @@ void Player::tick() {
     // Calculate attackAnim from swingTime (matching Java Player.updateAi)
     attackAnim = static_cast<float>(swingTime) / 8.0f;
 
+    // Sneaking camera offset (matching Java LocalPlayer.aiStep exactly)
+    // When sneaking, ySlideOffset is set to 0.2 if below that
+    // ySlideOffset only decays when NOT sneaking (in Entity.move)
+    if (sneaking && ySlideOffset < 0.2f) {
+        ySlideOffset = 0.2f;
+    }
+
     // Handle movement
     updateMovement();
 }
@@ -160,11 +167,7 @@ void Player::setRunning(bool r) {
 
 void Player::setSneaking(bool s) {
     sneaking = s;
-    if (s) {
-        eyeHeight = 1.5f;
-    } else {
-        eyeHeight = 1.62f;
-    }
+    // Eye height is now gradually transitioned in tick(), not set instantly here
 }
 
 void Player::swing() {
@@ -198,7 +201,8 @@ bool Player::destroyBlock(int x, int y, int z) {
 
     // Would check if block is breakable, apply tool speed, etc.
     level->setTile(x, y, z, 0);  // Set to air
-    swing();
+    // Note: swing() is NOT called here - Java only calls swing() once when the player first clicks,
+    // not when the block actually breaks. The swing is triggered in Minecraft::handleInput().
     return true;
 }
 
@@ -210,13 +214,14 @@ bool Player::placeBlock(int x, int y, int z, int /*face*/, int blockId) {
     if (currentTile != 0) return false;  // Not air
 
     level->setTile(x, y, z, blockId);
-    swing();
+    // Note: swing() is NOT called here - Java calls swing() BEFORE placement in Minecraft::handleMouseClick(),
+    // not in this method. The swing is triggered in Minecraft::handleInput().
     return true;
 }
 
-void Player::playStepSound(int /*tileId*/) {
-    // Play step sound based on tile
-    playSound("step.stone", 0.5f, 1.0f);
+void Player::playStepSound(int tileId) {
+    // Call parent implementation which handles tile-based sounds
+    Entity::playStepSound(tileId);
 }
 
 void Player::heal(int amount) {

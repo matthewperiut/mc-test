@@ -1,5 +1,7 @@
 #include "entity/Entity.hpp"
 #include "world/Level.hpp"
+#include "world/tile/Tile.hpp"
+#include "audio/SoundEngine.hpp"
 #include "util/Mth.hpp"
 #include <cmath>
 #include <algorithm>
@@ -25,11 +27,15 @@ Entity::Entity(Level* level)
     , fallDistance(0.0f)
     , walkDist(0.0f)
     , oWalkDist(0.0f)
+    , nextStep(1)
+    , makeStepSound(true)
     , tickCount(0)
     , noPhysicsCount(0)
     , removed(false)
     , heightOffset(0.0f)
     , eyeHeight(1.62f)
+    , ySlideOffset(0.0f)
+    , prevYSlideOffset(0.0f)
     , noClip(false)
     , blocksBuilding(false)  // Java: Entity sets this to false, Mob sets to true
     , level(level)
@@ -49,6 +55,7 @@ void Entity::baseTick() {
     prevYRot = yRot;
     prevXRot = xRot;
     oWalkDist = walkDist;
+    prevYSlideOffset = ySlideOffset;
 
     tickCount++;
 
@@ -93,6 +100,53 @@ void Entity::move(double dx, double dy, double dz) {
     double origDy = dy;
     double origDz = dz;
 
+    // Sneaking edge detection - prevents falling off edges when sneaking
+    // Matches Java Entity.move() exactly
+    if (level && onGround && isSneaking()) {
+        constexpr double stepSize = 0.05;
+
+        // Reduce X movement until there's ground below
+        while (dx != 0.0 && level->getCollisionBoxes(this, bb.move(dx, -1.0, 0.0)).empty()) {
+            if (dx < stepSize && dx >= -stepSize) {
+                dx = 0.0;
+            } else if (dx > 0.0) {
+                dx -= stepSize;
+            } else {
+                dx += stepSize;
+            }
+        }
+
+        // Reduce Z movement until there's ground below
+        while (dz != 0.0 && level->getCollisionBoxes(this, bb.move(0.0, -1.0, dz)).empty()) {
+            if (dz < stepSize && dz >= -stepSize) {
+                dz = 0.0;
+            } else if (dz > 0.0) {
+                dz -= stepSize;
+            } else {
+                dz += stepSize;
+            }
+        }
+
+        // Also check diagonal movement (X and Z combined)
+        while (dx != 0.0 && dz != 0.0 && level->getCollisionBoxes(this, bb.move(dx, -1.0, dz)).empty()) {
+            if (dx < stepSize && dx >= -stepSize) {
+                dx = 0.0;
+            } else if (dx > 0.0) {
+                dx -= stepSize;
+            } else {
+                dx += stepSize;
+            }
+
+            if (dz < stepSize && dz >= -stepSize) {
+                dz = 0.0;
+            } else if (dz > 0.0) {
+                dz -= stepSize;
+            } else {
+                dz += stepSize;
+            }
+        }
+    }
+
     if (level) {
         // Get collision boxes from level
         auto boxes = level->getCollisionBoxes(this, bb.expand(dx, dy, dz));
@@ -133,6 +187,23 @@ void Entity::move(double dx, double dy, double dz) {
     onGround = origDy != dy && origDy < 0;
     collision = horizontalCollision || verticalCollision;
 
+    // Play step sounds (matching Java Entity.move)
+    if (makeStepSound && onGround && !inWater) {
+        if (walkDist > static_cast<float>(nextStep) && level) {
+            ++nextStep;
+
+            // Get tile below player
+            int blockX = static_cast<int>(std::floor(x));
+            int blockY = static_cast<int>(std::floor(y - 0.2));
+            int blockZ = static_cast<int>(std::floor(z));
+            int tileId = level->getTile(blockX, blockY, blockZ);
+
+            if (tileId > 0) {
+                playStepSound(tileId);
+            }
+        }
+    }
+
     // Handle landing
     if (onGround) {
         if (fallDistance > 0.0f) {
@@ -147,6 +218,13 @@ void Entity::move(double dx, double dy, double dz) {
     if (origDx != dx) xd = 0;
     if (origDy != dy) yd = 0;
     if (origDz != dz) zd = 0;
+
+    // Decay ySlideOffset (Java Entity.move line 536)
+    // Only decay when not sneaking - this creates smooth camera rise when exiting sneak
+    // While sneaking, ySlideOffset stays at 0.2 (set in Player::tick)
+    if (!isSneaking()) {
+        ySlideOffset *= 0.4f;
+    }
 }
 
 void Entity::moveRelative(float strafe, float forward, float friction) {
@@ -207,6 +285,10 @@ float Entity::getInterpolatedXRot(float partialTick) const {
     return prevXRot + (xRot - prevXRot) * partialTick;
 }
 
+float Entity::getInterpolatedYSlideOffset(float partialTick) const {
+    return prevYSlideOffset + (ySlideOffset - prevYSlideOffset) * partialTick;
+}
+
 bool Entity::isColliding(const AABB& box) const {
     return bb.intersects(box);
 }
@@ -257,12 +339,37 @@ double Entity::distanceToSqr(double tx, double ty, double tz) const {
     return dx * dx + dy * dy + dz * dz;
 }
 
-void Entity::playStepSound(int /*tileId*/) {
-    // Would use sound engine
+void Entity::playStepSound(int tileId) {
+    if (tileId <= 0 || tileId >= 256) return;
+
+    Tile* tile = Tile::tiles[tileId];
+    if (!tile || tile->stepSound.empty()) {
+        // Default to stone sound if no step sound defined
+        SoundEngine::getInstance().playSound3D(
+            "step.stone",
+            static_cast<float>(x), static_cast<float>(y), static_cast<float>(z),
+            tile ? tile->stepSoundVolume * 0.15f : 0.15f,
+            tile ? tile->stepSoundPitch : 1.0f
+        );
+        return;
+    }
+
+    // Play step sound at entity position with reduced volume (matching Java: volume * 0.15)
+    std::string soundName = "step." + tile->stepSound;
+    SoundEngine::getInstance().playSound3D(
+        soundName,
+        static_cast<float>(x), static_cast<float>(y), static_cast<float>(z),
+        tile->stepSoundVolume * 0.15f,
+        tile->stepSoundPitch
+    );
 }
 
-void Entity::playSound(const std::string& /*sound*/, float /*volume*/, float /*pitch*/) {
-    // Would use sound engine
+void Entity::playSound(const std::string& sound, float volume, float pitch) {
+    SoundEngine::getInstance().playSound3D(
+        sound,
+        static_cast<float>(x), static_cast<float>(y), static_cast<float>(z),
+        volume, pitch
+    );
 }
 
 void Entity::hurt(Entity* /*source*/, int /*damage*/) {

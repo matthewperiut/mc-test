@@ -64,6 +64,7 @@ set(ENTITY_SOURCES
 
 set(AUDIO_SOURCES
     src/audio/SoundEngine.cpp
+    src/stb_vorbis_impl.cpp
 )
 
 set(GUI_SOURCES

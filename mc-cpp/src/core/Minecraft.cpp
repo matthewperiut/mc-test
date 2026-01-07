@@ -75,6 +75,9 @@ Minecraft::Minecraft()
     , lastFpsTime(0)
     , ticks(0)
     , lastClickTick(0)
+    , isBreakingBlock(false)
+    , breakingX(-1), breakingY(-1), breakingZ(-1)
+    , breakingFace(0)
     , showDebug(false)
 {
     minecraft = this;
@@ -269,6 +272,21 @@ void Minecraft::tick() {
 
     ticks++;  // Increment tick counter (Java: this.ticks++)
 
+    // Process block breaking once per tick (not per frame)
+    // This matches Java's tick-based destruction progress
+    if (isBreakingBlock && gameMode && player) {
+        static int lastSwingTick = 0;
+
+        // Continue destroying the block (once per tick)
+        gameMode->continueDestroyBlock(breakingX, breakingY, breakingZ, breakingFace);
+
+        // Periodic swing animation every 5 ticks (Java: ticksPerSecond / 4.0F)
+        if ((ticks - lastSwingTick) >= 5) {
+            player->swing();
+            lastSwingTick = ticks;
+        }
+    }
+
     // Tick level
     if (level) {
         level->tick();
@@ -341,41 +359,53 @@ void Minecraft::handleInput() {
         player->handleInput(window);
     }
 
-    // Handle mouse click actions - time-based block breaking
+    // Handle mouse click actions - track state for tick-based block breaking
     // Only process when no screen is open and mouse is grabbed
     if (player && level && gameMode && gameRenderer && !currentScreen && mouseHandler.isGrabbed()) {
         static bool wasBreaking = false;
-        bool isBreaking = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+        bool leftMouseDown = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
 
-        if (isBreaking && gameRenderer->hitResult.isTile()) {
+        if (leftMouseDown && gameRenderer->hitResult.isTile()) {
             int x = gameRenderer->hitResult.x;
             int y = gameRenderer->hitResult.y;
             int z = gameRenderer->hitResult.z;
             int face = static_cast<int>(gameRenderer->hitResult.face);
 
             if (!wasBreaking) {
-                // Just started breaking - trigger swing animation (Java: handleMouseClick line 857)
+                // Just started breaking - trigger swing animation and start
                 player->swing();
                 gameMode->startDestroyBlock(x, y, z, face);
+                isBreakingBlock = true;
+                breakingX = x;
+                breakingY = y;
+                breakingZ = z;
+                breakingFace = face;
             } else {
-                // Continue breaking - Java does NOT call swing() here (handleMouseDown line 844)
-                gameMode->continueDestroyBlock(x, y, z, face);
+                // Update target block (in case player moved aim)
+                breakingX = x;
+                breakingY = y;
+                breakingZ = z;
+                breakingFace = face;
             }
 
             // Track block position for crack animation
             levelRenderer->destroyX = x;
             levelRenderer->destroyY = y;
             levelRenderer->destroyZ = z;
-        } else if (isBreaking && !wasBreaking) {
+        } else if (leftMouseDown && !wasBreaking) {
             // Left-click in air (no tile hit) - still trigger swing
             player->swing();
-        } else if (wasBreaking && !isBreaking) {
+            isBreakingBlock = false;
+        } else if (wasBreaking && !leftMouseDown) {
             // Stopped breaking
             gameMode->stopDestroyBlock();
             levelRenderer->destroyProgress = 0.0f;
+            isBreakingBlock = false;
+        } else if (!leftMouseDown) {
+            isBreakingBlock = false;
         }
 
-        wasBreaking = isBreaking;
+        wasBreaking = leftMouseDown;
 
         // Right click - place block
         // Java has TWO code paths:
@@ -409,9 +439,27 @@ void Minecraft::handleInput() {
                     // Check if block can be placed (Java: level.mayPlace())
                     // This checks for entity collisions (can't place inside player)
                     if (level->mayPlace(held.id, x, y, z, false)) {
+                        // Only swing if block actually gets placed (differs from Java)
+                        player->swing();
+
                         // Place the block
                         level->setTile(x, y, z, held.id);
-                        player->swing();
+
+                        // Play place sound (matching Java TileItem line 57)
+                        // Java: level.playSound(x+0.5, y+0.5, z+0.5, soundType.getStepSound(), (volume+1.0)/2.0, pitch*0.8)
+                        Tile* placedTile = Tile::tiles[held.id];
+                        if (placedTile) {
+                            std::string soundName = placedTile->stepSound.empty() ? "step.stone" : "step." + placedTile->stepSound;
+                            SoundEngine::getInstance().playSound3D(
+                                soundName,
+                                x + 0.5f, y + 0.5f, z + 0.5f,
+                                (placedTile->stepSoundVolume + 1.0f) / 2.0f,
+                                placedTile->stepSoundPitch * 0.8f
+                            );
+                        }
+
+                        // Trigger item-placed animation (hand goes down then up)
+                        gameRenderer->itemPlaced();
 
                         // Consume item (unless in creative mode)
                         if (!player->creative) {
