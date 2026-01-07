@@ -262,12 +262,13 @@ void TileRenderer::renderTileForGUIWithColors(Tile* tile, int data) {
     if (!tile) return;
 
     // Uses vertex colors for face brightness (for GUI slots without OpenGL lighting)
+    // Swapped: darker (0.6) on bottom-right, lighter (0.8) on bottom-left
     float brightTop = 1.0f;
     float brightBottom = 0.5f;
-    float brightNorth = 0.8f;
-    float brightSouth = 0.8f;
-    float brightWest = 0.6f;
-    float brightEast = 0.6f;
+    float brightNorth = 0.6f;
+    float brightSouth = 0.6f;
+    float brightWest = 0.8f;
+    float brightEast = 0.8f;
 
     int shape = tile->renderShape == TileShape::CUBE ? 0 : 1;
 
