@@ -87,11 +87,11 @@ void TileRenderer::renderBlockItem(Tile* tile, float scale) {
     // Java ItemRenderer.renderItem() for blocks
     // Renders a standalone block centered at origin with scale
 
-    // Face brightness multipliers (matching Java)
+    // Face brightness multipliers
     float c0 = 0.5f;   // Bottom face
     float c1 = 1.0f;   // Top face
-    float c2 = 0.8f;   // North/South faces
-    float c3 = 0.6f;   // West/East faces
+    float c2 = 0.6f;   // North/South faces (bottom-right in isometric view)
+    float c3 = 0.8f;   // West/East faces (bottom-left in isometric view)
 
     // Grass color tint
     bool isGrass = (tile->id == Tile::GRASS);
@@ -110,7 +110,7 @@ void TileRenderer::renderBlockItem(Tile* tile, float scale) {
     // Get UV for each face
     float u0, v0, u1, v1;
 
-    // Bottom face (Y-)
+    // Bottom face (Y-) - Java renderFaceUp
     getUV(tile->getTexture(0), u0, v0, u1, v1);
     t.color(c0, c0, c0);
     t.vertexUV(x0, y0, z1, u0, v1);
@@ -118,19 +118,19 @@ void TileRenderer::renderBlockItem(Tile* tile, float scale) {
     t.vertexUV(x1, y0, z0, u1, v0);
     t.vertexUV(x1, y0, z1, u1, v1);
 
-    // Top face (Y+)
+    // Top face (Y+) - Java renderFaceDown
     getUV(tile->getTexture(1), u0, v0, u1, v1);
     if (isGrass) {
         t.color(c1 * grassR, c1 * grassG, c1 * grassB);
     } else {
         t.color(c1, c1, c1);
     }
-    t.vertexUV(x0, y1, z0, u0, v0);
-    t.vertexUV(x0, y1, z1, u0, v1);
     t.vertexUV(x1, y1, z1, u1, v1);
     t.vertexUV(x1, y1, z0, u1, v0);
+    t.vertexUV(x0, y1, z0, u0, v0);
+    t.vertexUV(x0, y1, z1, u0, v1);
 
-    // North face (Z-)
+    // North face (Z-) - Java renderNorth
     getUV(tile->getTexture(2), u0, v0, u1, v1);
     t.color(c2, c2, c2);
     t.vertexUV(x0, y1, z0, u1, v0);
@@ -138,29 +138,29 @@ void TileRenderer::renderBlockItem(Tile* tile, float scale) {
     t.vertexUV(x1, y0, z0, u0, v1);
     t.vertexUV(x0, y0, z0, u1, v1);
 
-    // South face (Z+)
+    // South face (Z+) - Java renderSouth
     getUV(tile->getTexture(3), u0, v0, u1, v1);
     t.color(c2, c2, c2);
+    t.vertexUV(x0, y1, z1, u0, v0);
     t.vertexUV(x0, y0, z1, u0, v1);
     t.vertexUV(x1, y0, z1, u1, v1);
     t.vertexUV(x1, y1, z1, u1, v0);
-    t.vertexUV(x0, y1, z1, u0, v0);
 
-    // West face (X-)
+    // West face (X-) - Java renderWest
     getUV(tile->getTexture(4), u0, v0, u1, v1);
     t.color(c3, c3, c3);
-    t.vertexUV(x0, y0, z0, u1, v1);
-    t.vertexUV(x0, y0, z1, u0, v1);
-    t.vertexUV(x0, y1, z1, u0, v0);
-    t.vertexUV(x0, y1, z0, u1, v0);
+    t.vertexUV(x0, y1, z1, u1, v0);
+    t.vertexUV(x0, y1, z0, u0, v0);
+    t.vertexUV(x0, y0, z0, u0, v1);
+    t.vertexUV(x0, y0, z1, u1, v1);
 
-    // East face (X+)
+    // East face (X+) - Java renderEast
     getUV(tile->getTexture(5), u0, v0, u1, v1);
     t.color(c3, c3, c3);
-    t.vertexUV(x1, y1, z0, u0, v0);
-    t.vertexUV(x1, y1, z1, u1, v0);
-    t.vertexUV(x1, y0, z1, u1, v1);
-    t.vertexUV(x1, y0, z0, u0, v1);
+    t.vertexUV(x1, y0, z1, u0, v1);
+    t.vertexUV(x1, y0, z0, u1, v1);
+    t.vertexUV(x1, y1, z0, u1, v0);
+    t.vertexUV(x1, y1, z1, u0, v0);
 }
 
 void TileRenderer::renderTileForGUI(Tile* tile, int data) {

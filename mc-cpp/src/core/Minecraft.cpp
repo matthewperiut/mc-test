@@ -245,8 +245,8 @@ void Minecraft::run() {
             tick();
         }
 
-        // Render
-        render(timer.partialTick);
+        // Render (freeze partialTick when paused to prevent jitter)
+        render(paused ? 0.0f : timer.partialTick);
 
         // Swap buffers
         glfwSwapBuffers(window);
@@ -261,9 +261,9 @@ void Minecraft::run() {
 }
 
 void Minecraft::tick() {
-    ticks++;  // Increment tick counter (Java: this.ticks++)
-
     if (paused) return;
+
+    ticks++;  // Increment tick counter (Java: this.ticks++)
 
     // Tick level
     if (level) {
@@ -333,7 +333,8 @@ void Minecraft::handleInput() {
     }
 
     // Handle mouse click actions - time-based block breaking
-    if (player && level && gameMode && gameRenderer) {
+    // Only process when no screen is open and mouse is grabbed
+    if (player && level && gameMode && gameRenderer && !currentScreen && mouseHandler.isGrabbed()) {
         static bool wasBreaking = false;
         bool isBreaking = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
 
@@ -544,6 +545,14 @@ void Minecraft::setScreen(Screen* screen) {
         int scaledHeight = gui ? gui->getScaledHeight() : screenHeight;
         screen->init(this, scaledWidth, scaledHeight);
         releaseMouse();
+
+        // Stop any ongoing block breaking
+        if (gameMode) {
+            gameMode->stopDestroyBlock();
+        }
+        if (levelRenderer) {
+            levelRenderer->destroyProgress = 0.0f;
+        }
     }
 }
 
@@ -568,6 +577,10 @@ void Minecraft::grabMouse() {
 }
 
 void Minecraft::releaseMouse() {
+    // Match Java: release all keys when mouse is released
+    if (player) {
+        player->releaseAllKeys();
+    }
     mouseHandler.release();
 }
 

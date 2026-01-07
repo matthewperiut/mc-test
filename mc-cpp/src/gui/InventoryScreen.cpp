@@ -29,7 +29,7 @@ void InventoryScreen::init(Minecraft* mc, int w, int h) {
     guiTop = (height - GUI_HEIGHT) / 2;
 }
 
-void InventoryScreen::render(int mx, int my, float partialTick) {
+void InventoryScreen::render(int mx, int my, float /*partialTick*/) {
     mouseX = mx;
     mouseY = my;
 
@@ -68,6 +68,11 @@ void InventoryScreen::render(int mx, int my, float partialTick) {
         renderDraggedItem();
     }
 
+    // Render tooltip for hovered item (only when not dragging)
+    if (draggedItem.isEmpty()) {
+        renderTooltip();
+    }
+
     // Restore projection
     glMatrixMode(GL_PROJECTION);
     glPopMatrix();
@@ -96,10 +101,10 @@ void InventoryScreen::renderBackground() {
 void InventoryScreen::renderSlots() {
     if (!minecraft->player || !minecraft->player->inventory) return;
 
-    Inventory* inv = minecraft->player->inventory.get();
-
     // Get hovered slot for highlighting
     int hoveredSlot = getSlotAtPosition(mouseX, mouseY);
+    int highlightX = 0, highlightY = 0;
+    bool hasHighlight = false;
 
     // Hotbar slots (bottom row, slots 0-8)
     // Java position: x=8, y=142 within the GUI
@@ -108,7 +113,9 @@ void InventoryScreen::renderSlots() {
         int y = guiTop + 142;
         renderSlot(i, x, y);
         if (hoveredSlot == i) {
-            renderSlotHighlight(x, y);
+            highlightX = x;
+            highlightY = y;
+            hasHighlight = true;
         }
     }
 
@@ -121,7 +128,9 @@ void InventoryScreen::renderSlots() {
             int y = guiTop + 84 + row * SLOT_SIZE;
             renderSlot(slot, x, y);
             if (hoveredSlot == slot) {
-                renderSlotHighlight(x, y);
+                highlightX = x;
+                highlightY = y;
+                hasHighlight = true;
             }
         }
     }
@@ -134,8 +143,15 @@ void InventoryScreen::renderSlots() {
         int y = guiTop + 8 + i * SLOT_SIZE;
         renderSlot(slot, x, y);
         if (hoveredSlot == slot) {
-            renderSlotHighlight(x, y);
+            highlightX = x;
+            highlightY = y;
+            hasHighlight = true;
         }
+    }
+
+    // Render highlight AFTER all slots (Java does this during the loop but we need to avoid GL state conflicts)
+    if (hasHighlight) {
+        renderSlotHighlight(highlightX, highlightY);
     }
 }
 
@@ -259,23 +275,82 @@ void InventoryScreen::blit(int x, int y, int u, int v, int w, int h) {
 
 void InventoryScreen::renderSlotHighlight(int x, int y) {
     // Render semi-transparent white highlight over slot (matching Java AbstractContainerScreen)
+    // Java: GL11.glDisable(2896) = lighting, GL11.glDisable(2929) = depth test
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_LIGHTING);
     glDisable(GL_TEXTURE_2D);
+    glDisable(GL_ALPHA_TEST);  // Disable alpha test so 0.5 alpha isn't discarded
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    // Semi-transparent white (matching Java: 0x80FFFFFF)
+    // Semi-transparent white (matching Java: -2130706433 = 0x80FFFFFF = 50% alpha)
     glColor4f(1.0f, 1.0f, 1.0f, 0.5f);
 
+    // Render at z=200 to be in front of items (which render at z=100)
     glBegin(GL_QUADS);
-    glVertex2f(static_cast<float>(x), static_cast<float>(y));
-    glVertex2f(static_cast<float>(x + 16), static_cast<float>(y));
-    glVertex2f(static_cast<float>(x + 16), static_cast<float>(y + 16));
-    glVertex2f(static_cast<float>(x), static_cast<float>(y + 16));
+    glVertex3f(static_cast<float>(x), static_cast<float>(y), 200.0f);
+    glVertex3f(static_cast<float>(x + 16), static_cast<float>(y), 200.0f);
+    glVertex3f(static_cast<float>(x + 16), static_cast<float>(y + 16), 200.0f);
+    glVertex3f(static_cast<float>(x), static_cast<float>(y + 16), 200.0f);
+    glEnd();
+
+    // Restore state
+    glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+    glDisable(GL_BLEND);
+    glEnable(GL_TEXTURE_2D);
+}
+
+void InventoryScreen::renderTooltip() {
+    if (!minecraft->player || !minecraft->player->inventory) return;
+
+    int hoveredSlot = getSlotAtPosition(mouseX, mouseY);
+    if (hoveredSlot < 0) return;
+
+    const ItemStack& item = minecraft->player->inventory->getItem(hoveredSlot);
+    if (item.isEmpty()) return;
+
+    // Get item name
+    std::string itemName;
+    if (item.id > 0 && item.id < 256) {
+        Tile* tile = Tile::tiles[item.id];
+        if (tile && !tile->name.empty()) {
+            itemName = tile->name;
+        }
+    }
+
+    if (itemName.empty()) return;
+
+    // Position tooltip (Java: mouseX - guiLeft + 12, mouseY - guiTop - 12)
+    int tooltipX = mouseX + 12;
+    int tooltipY = mouseY - 12;
+    int textWidth = font->getWidth(itemName);
+
+    // Draw tooltip background (Java: -1073741824 = 0xC0000000 = dark semi-transparent)
+    glDisable(GL_TEXTURE_2D);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glColor4f(0.0f, 0.0f, 0.0f, 0.75f);
+
+    glBegin(GL_QUADS);
+    glVertex2f(static_cast<float>(tooltipX - 3), static_cast<float>(tooltipY - 3));
+    glVertex2f(static_cast<float>(tooltipX + textWidth + 3), static_cast<float>(tooltipY - 3));
+    glVertex2f(static_cast<float>(tooltipX + textWidth + 3), static_cast<float>(tooltipY + 8 + 3));
+    glVertex2f(static_cast<float>(tooltipX - 3), static_cast<float>(tooltipY + 8 + 3));
     glEnd();
 
     glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
     glDisable(GL_BLEND);
     glEnable(GL_TEXTURE_2D);
+
+    // Draw item name
+    font->drawShadow(itemName, tooltipX, tooltipY, 0xFFFFFF);
+}
+
+bool InventoryScreen::isHovering(int slotX, int slotY, int mx, int my) {
+    // Match Java: extend hit area by 1 pixel in each direction (18x18 total)
+    // This covers the gaps between slots
+    return mx >= slotX - 1 && mx < slotX + 16 + 1 &&
+           my >= slotY - 1 && my < slotY + 16 + 1;
 }
 
 int InventoryScreen::getSlotAtPosition(int mx, int my) {
@@ -283,7 +358,7 @@ int InventoryScreen::getSlotAtPosition(int mx, int my) {
     for (int i = 0; i < 9; i++) {
         int slotX = guiLeft + 8 + i * SLOT_SIZE;
         int slotY = guiTop + 142;
-        if (mx >= slotX && mx < slotX + 16 && my >= slotY && my < slotY + 16) {
+        if (isHovering(slotX, slotY, mx, my)) {
             return i;
         }
     }
@@ -294,7 +369,7 @@ int InventoryScreen::getSlotAtPosition(int mx, int my) {
             int slot = 9 + row * 9 + col;
             int slotX = guiLeft + 8 + col * SLOT_SIZE;
             int slotY = guiTop + 84 + row * SLOT_SIZE;
-            if (mx >= slotX && mx < slotX + 16 && my >= slotY && my < slotY + 16) {
+            if (isHovering(slotX, slotY, mx, my)) {
                 return slot;
             }
         }
@@ -305,7 +380,7 @@ int InventoryScreen::getSlotAtPosition(int mx, int my) {
         int slot = 36 + (3 - i);
         int slotX = guiLeft + 8;
         int slotY = guiTop + 8 + i * SLOT_SIZE;
-        if (mx >= slotX && mx < slotX + 16 && my >= slotY && my < slotY + 16) {
+        if (isHovering(slotX, slotY, mx, my)) {
             return slot;
         }
     }
@@ -420,7 +495,19 @@ void InventoryScreen::keyPressed(int key, int scancode, int action, int mods) {
 void InventoryScreen::mouseClicked(int button, int action) {
     if (action == GLFW_PRESS) {
         int slot = getSlotAtPosition(mouseX, mouseY);
-        handleSlotClick(slot, button);
+
+        // Check if clicking outside the inventory GUI (matching Java)
+        bool outsideGui = mouseX < guiLeft || mouseY < guiTop ||
+                          mouseX >= guiLeft + GUI_WIDTH || mouseY >= guiTop + GUI_HEIGHT;
+
+        if (outsideGui && !draggedItem.isEmpty()) {
+            // Drop item when clicking outside with a carried item (Java: slot -999)
+            // For now, just clear the dragged item (TODO: spawn dropped item entity)
+            draggedItem = ItemStack();
+            draggedFromSlot = -1;
+        } else {
+            handleSlotClick(slot, button);
+        }
     }
 }
 

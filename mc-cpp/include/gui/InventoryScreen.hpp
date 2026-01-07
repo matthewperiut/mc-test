@@ -46,9 +46,11 @@ private:
     void renderSlot(int slotIndex, int x, int y);
     void renderSlotHighlight(int x, int y);
     void renderDraggedItem();
+    void renderTooltip();
     void blit(int x, int y, int u, int v, int w, int h);
 
     // Slot interaction
+    bool isHovering(int slotX, int slotY, int mx, int my);
     int getSlotAtPosition(int mx, int my);
     void handleSlotClick(int slot, int button);
 };

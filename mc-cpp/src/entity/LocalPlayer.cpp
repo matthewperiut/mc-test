@@ -95,6 +95,18 @@ void LocalPlayer::handleInput(GLFWwindow* window) {
     keyUse = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
 }
 
+void LocalPlayer::releaseAllKeys() {
+    // Match Java: just reset key states, movement recalculated in tick()
+    keyUp = false;
+    keyDown = false;
+    keyLeft = false;
+    keyRight = false;
+    keyJump = false;
+    keySneak = false;
+    keyAttack = false;
+    keyUse = false;
+}
+
 float LocalPlayer::getBobbing(float partialTick) const {
     return oBob + (bob - oBob) * partialTick;
 }

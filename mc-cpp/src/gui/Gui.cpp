@@ -148,9 +148,8 @@ void Gui::render(float partialTick) {
                         // Render stack count if > 1 (Java renderGuiItemDecorations)
                         if (item.count > 1) {
                             std::string countStr = std::to_string(item.count);
-                            // Position in bottom-right of slot
-                            // Slot is 16x16, text should be offset to bottom-right corner
-                            int textX = slotX + 16 - font.getWidth(countStr);
+                            // Position in bottom-right of slot (Java: x + 19 - 2 - font.width = x + 17 - width)
+                            int textX = slotX + 17 - font.getWidth(countStr);
                             int textY = slotY + 9;
 
                             // Java disables lighting and depth test for text

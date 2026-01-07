@@ -33,6 +33,7 @@ public:
     // Input handling
     void setKey(int key, bool pressed);
     void handleInput(GLFWwindow* window);
+    void releaseAllKeys();
 
     // Camera
     float getBobbing(float partialTick) const;
