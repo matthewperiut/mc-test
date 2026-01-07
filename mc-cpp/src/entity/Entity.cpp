@@ -23,6 +23,8 @@ Entity::Entity(Level* level)
     , inLava(false)
     , stepHeight(0.0f)
     , fallDistance(0.0f)
+    , walkDist(0.0f)
+    , oWalkDist(0.0f)
     , tickCount(0)
     , noPhysicsCount(0)
     , removed(false)
@@ -46,6 +48,7 @@ void Entity::baseTick() {
     prevZ = z;
     prevYRot = yRot;
     prevXRot = xRot;
+    oWalkDist = walkDist;
 
     tickCount++;
 
@@ -119,6 +122,10 @@ void Entity::move(double dx, double dy, double dz) {
     x = (bb.x0 + bb.x1) / 2.0;
     y = bb.y0;
     z = (bb.z0 + bb.z1) / 2.0;
+
+    // Accumulate walk distance for view bobbing (matching Java Entity.move)
+    float horizDist = std::sqrt(static_cast<float>(dx * dx + dz * dz));
+    walkDist += horizDist * 0.6f;
 
     // Check collisions
     horizontalCollision = origDx != dx || origDz != dz;

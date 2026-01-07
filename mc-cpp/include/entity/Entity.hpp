@@ -40,6 +40,10 @@ public:
     // Fall damage
     float fallDistance;
 
+    // Walk distance (for view bobbing oscillation)
+    float walkDist;
+    float oWalkDist;
+
     // Timing
     int tickCount;
     int noPhysicsCount;

@@ -280,6 +280,11 @@ void Minecraft::tick() {
         gui->tick();
     }
 
+    // Tick game renderer (for item switch animation)
+    if (gameRenderer) {
+        gameRenderer->tick();
+    }
+
     // Tick screen
     if (currentScreen) {
         currentScreen->tick();
@@ -345,10 +350,11 @@ void Minecraft::handleInput() {
             int face = static_cast<int>(gameRenderer->hitResult.face);
 
             if (!wasBreaking) {
-                // Just started breaking
+                // Just started breaking - trigger swing animation (Java: handleMouseClick line 857)
+                player->swing();
                 gameMode->startDestroyBlock(x, y, z, face);
             } else {
-                // Continue breaking
+                // Continue breaking - Java does NOT call swing() here (handleMouseDown line 844)
                 gameMode->continueDestroyBlock(x, y, z, face);
             }
 
@@ -356,6 +362,9 @@ void Minecraft::handleInput() {
             levelRenderer->destroyX = x;
             levelRenderer->destroyY = y;
             levelRenderer->destroyZ = z;
+        } else if (isBreaking && !wasBreaking) {
+            // Left-click in air (no tile hit) - still trigger swing
+            player->swing();
         } else if (wasBreaking && !isBreaking) {
             // Stopped breaking
             gameMode->stopDestroyBlock();

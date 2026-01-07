@@ -27,6 +27,11 @@ public:
     float bobbing;
     float tilt;
 
+    // Item in hand animation
+    float itemHeight;      // Current item height (0=lowered, 1=raised)
+    float oItemHeight;     // Previous item height for interpolation
+    int lastSelectedSlot;  // Last selected hotbar slot
+
     // Screen dimensions
     int screenWidth, screenHeight;
 
@@ -34,6 +39,7 @@ public:
 
     // Main render
     void render(float partialTick);
+    void tick();  // Update per-tick animations
 
     // Setup
     void setupCamera(float partialTick);
@@ -60,6 +66,7 @@ private:
     void setupProjection(float fov, float nearPlane, float farPlane);
     void orientCamera(float partialTick);
     void applyBobbing(float partialTick);
+    void renderArmModel(float scale);  // Render the arm geometry for first-person hand
 };
 
 } // namespace mc

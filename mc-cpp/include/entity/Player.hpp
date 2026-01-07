@@ -29,9 +29,10 @@ public:
     std::unique_ptr<Inventory> inventory;
     int selectedSlot;  // Convenience accessor (also in inventory)
 
-    // Arm swing animation
-    float swingProgress;
-    int swingProgressInt;
+    // Arm swing animation (matching Java Player exactly)
+    int swingTime;      // Integer counter: -1 to 7, then resets
+    float attackAnim;   // Calculated as swingTime / 8.0f
+    float oAttackAnim;  // Previous frame for interpolation
     bool swinging;
 
     // Input state (set by keyboard handling)
@@ -73,7 +74,7 @@ public:
 
     // Animation
     void swing();
-    float getSwingProgress(float partialTick) const;
+    float getAttackAnim(float partialTick) const;
 
     // Sound
     void playStepSound(int tileId) override;

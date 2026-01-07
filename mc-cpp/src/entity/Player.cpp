@@ -17,8 +17,9 @@ Player::Player(Level* level)
     , flying(false)
     , creative(false)
     , selectedSlot(0)
-    , swingProgress(0.0f)
-    , swingProgressInt(0)
+    , swingTime(0)
+    , attackAnim(0.0f)
+    , oAttackAnim(0.0f)
     , swinging(false)
     , moveStrafe(0.0f)
     , moveForward(0.0f)
@@ -42,17 +43,22 @@ Player::Player(Level* level)
 void Player::tick() {
     Entity::tick();
 
-    // Update swing animation
+    // Save previous attackAnim for interpolation (matching Java Mob.baseTick)
+    oAttackAnim = attackAnim;
+
+    // Update swing animation (matching Java Player.updateAi exactly)
     if (swinging) {
-        swingProgressInt++;
-        if (swingProgressInt >= 8) {
-            swingProgressInt = 0;
+        ++swingTime;
+        if (swingTime == 8) {
+            swingTime = 0;
             swinging = false;
         }
     } else {
-        swingProgressInt = 0;
+        swingTime = 0;
     }
-    swingProgress = static_cast<float>(swingProgressInt) / 8.0f;
+
+    // Calculate attackAnim from swingTime (matching Java Player.updateAi)
+    attackAnim = static_cast<float>(swingTime) / 8.0f;
 
     // Handle movement
     updateMovement();
@@ -162,15 +168,18 @@ void Player::setSneaking(bool s) {
 }
 
 void Player::swing() {
-    if (!swinging) {
-        swingProgressInt = -1;
-        swinging = true;
-    }
+    // Match Java Player.swing() exactly
+    swingTime = -1;
+    swinging = true;
 }
 
-float Player::getSwingProgress(float partialTick) const {
-    float progress = static_cast<float>(swingProgressInt) + partialTick;
-    return progress / 8.0f;
+float Player::getAttackAnim(float partialTick) const {
+    // Match Java Mob.getAttackAnim() - interpolate between frames
+    float delta = attackAnim - oAttackAnim;
+    if (delta < 0.0f) {
+        delta += 1.0f;  // Handle wrap-around
+    }
+    return oAttackAnim + delta * partialTick;
 }
 
 void Player::attack(Entity* target) {
