@@ -405,8 +405,7 @@ void SoundEngine::play3D(const std::string& sound, float x, float y, float z,
     }
 
     alSourcei(source, AL_BUFFER, buffer->buffer);
-    // Apply volume - boost by 2x to compensate for OpenAL vs Paul's Sound System differences
-    alSourcef(source, AL_GAIN, volume * soundVolume * masterVolume * 2.0f);
+    alSourcef(source, AL_GAIN, volume * soundVolume * masterVolume);
     alSourcef(source, AL_PITCH, pitch);
     alSourcei(source, AL_SOURCE_RELATIVE, AL_FALSE);
     alSource3f(source, AL_POSITION, x, y, z);
