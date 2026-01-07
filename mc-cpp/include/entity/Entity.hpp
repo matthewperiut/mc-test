@@ -48,6 +48,7 @@ public:
     bool removed;
     float heightOffset;
     float eyeHeight;
+    bool noClip;  // Noclip mode - no collision detection
 
     // Block placement check (Java: blocksBuilding)
     // If true, blocks cannot be placed inside this entity

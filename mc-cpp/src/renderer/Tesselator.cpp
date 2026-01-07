@@ -103,8 +103,14 @@ void Tesselator::draw() {
     glVertexPointer(3, GL_FLOAT, 32, array.data());
     glEnableClientState(GL_VERTEX_ARRAY);
 
-    // Draw!
-    glDrawArrays(mode, 0, vertices);
+    // Draw! (TRIANGLE_MODE converts GL_QUADS to GL_TRIANGLES)
+    // Temporarily disable TRIANGLE_MODE to test if it's causing cloud issues
+    static constexpr bool TRIANGLE_MODE = false;
+    if (mode == GL_QUADS && TRIANGLE_MODE) {
+        glDrawArrays(GL_TRIANGLES, 0, vertices);
+    } else {
+        glDrawArrays(mode, 0, vertices);
+    }
 
     // Disable client states
     glDisableClientState(GL_VERTEX_ARRAY);
@@ -181,6 +187,41 @@ void Tesselator::vertexUV(double x, double y, double z, double u_, double v_) {
 
 void Tesselator::vertex(double x, double y, double z) {
     count++;
+
+    // TRIANGLE_MODE: Convert quads to triangles (like Java)
+    // When completing a quad (4th vertex), duplicate v0 and v2 to make two triangles
+    // Temporarily disabled to test if it's causing cloud issues
+    static constexpr bool TRIANGLE_MODE = false;
+    if (mode == GL_QUADS && TRIANGLE_MODE && count % 4 == 0) {
+        for (int i = 0; i < 2; ++i) {
+            int offs = 8 * (3 - i);  // i=0: offs=24 (v0), i=1: offs=16 (v2... wait, should be v2 at offs=8)
+            // Actually Java: i=0 gives offs=24 (3 back), i=1 gives offs=16 (2 back)
+            // After v0,v1,v2, we're at p where v3 will go
+            // v0 is at p-24, v1 is at p-16, v2 is at p-8
+            // Java copies p-24 (v0) then p-16 (v1)... but that's wrong for triangles
+            // Let me re-check: we need (v0,v1,v2) and (v0,v2,v3)
+            // So we need to duplicate v0 and v2, not v0 and v1
+            // Actually the Java code copies from p-offs BEFORE incrementing p in loop
+            // i=0: offs=8*3=24, copies from p-24 = v0
+            // i=1: offs=8*2=16, but p was incremented! so p-16 now = old_p-16+8 = old_p-8 = v2
+            // So it copies v0, then v2. Correct!
+            if (hasTexture) {
+                array[p + 3] = array[p - offs + 3];
+                array[p + 4] = array[p - offs + 4];
+            }
+            if (hasColor) {
+                array[p + 5] = array[p - offs + 5];
+            }
+            if (hasNormal) {
+                array[p + 6] = array[p - offs + 6];
+            }
+            array[p + 0] = array[p - offs + 0];
+            array[p + 1] = array[p - offs + 1];
+            array[p + 2] = array[p - offs + 2];
+            vertices++;
+            p += 8;
+        }
+    }
 
     // Store texture coords
     if (hasTexture) {

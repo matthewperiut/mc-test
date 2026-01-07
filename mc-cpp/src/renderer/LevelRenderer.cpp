@@ -516,23 +516,31 @@ float LevelRenderer::getStarBrightness(float timeOfDay) const {
 }
 
 void LevelRenderer::renderClouds(float partialTick) {
-    // Match Java's renderAdvancedClouds() - 3D extruded clouds
+    // Dispatch to appropriate cloud renderer based on graphics setting
+    if (!minecraft || !minecraft->player) return;
+
+    // Check if dimension is foggy (no clouds in Nether-like dimensions)
+    // For now, always render clouds
+    if (minecraft->options.fancyGraphics) {
+        renderAdvancedClouds(partialTick);
+    } else {
+        renderFastClouds(partialTick);
+    }
+}
+
+void LevelRenderer::renderFastClouds(float partialTick) {
+    // Fast graphics: flat cloud layer at Y=120 (matching Java's renderClouds fast mode)
     if (!minecraft || !minecraft->player) return;
 
     LocalPlayer* player = minecraft->player;
 
-    // Java cloud parameters
-    float ss = 12.0f;  // Cloud cell scale in world units
-    float h = 4.0f;    // Cloud height/thickness
-    float cloudAltitude = 108.0f;  // World Y position of cloud bottom
-
-    // Cloud movement - use game ticks for consistent movement (matching Java)
-    // Java: (this.ticks + alpha) * 0.03F
-    double cloudDrift = (minecraft->ticks + partialTick) * 0.03;
-
     // Player position
-    double baseX = player->prevX + (player->x - player->prevX) * partialTick;
-    double baseZ = player->prevZ + (player->z - player->prevZ) * partialTick;
+    double playerX = player->prevX + (player->x - player->prevX) * partialTick;
+    double playerZ = player->prevZ + (player->z - player->prevZ) * partialTick;
+
+    // Cloud grid parameters (matching Java exactly)
+    int s = 32;        // Cell size in blocks
+    int d = 256 / s;   // Grid divisions = 8
 
     // Setup rendering
     glDisable(GL_CULL_FACE);
@@ -548,116 +556,217 @@ void LevelRenderer::renderClouds(float partialTick) {
     float cg = 0.9f * dayBrightness + 0.1f;
     float cb = 1.0f * dayBrightness + 0.1f;
 
-    // Render radius and chunk size
-    int radius = 4;
-    int cellsPerChunk = 8;
-    float chunkWorldSize = cellsPerChunk * ss;  // 96 blocks per chunk
+    // UV scale: 1/2048 (Java: 4.8828125E-4F)
+    float scale = 1.0f / 2048.0f;
 
-    // UV scale: cloud texture tiles every 2048 blocks (like Java)
-    float uvScale = 1.0f / 2048.0f;
+    // Cloud drift
+    double cloudDrift = (minecraft->ticks + partialTick) * 0.03;
 
-    // Render cloud layer centered on player
-    for (int pass = 0; pass < 2; ++pass) {
-        // Pass 0: depth only, Pass 1: color
-        if (pass == 0) {
-            glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-        } else {
-            glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    // Cloud altitude in world space
+    float cloudY = 120.0f;
+
+    // Center cloud grid on player position (snapped to grid)
+    double centerX = std::floor(playerX / s) * s;
+    double centerZ = std::floor(playerZ / s) * s;
+
+    // Render flat cloud grid at world coordinates
+    glBegin(GL_QUADS);
+    glColor4f(cr, cg, cb, 0.8f);
+
+    for (int gx = -d; gx < d; gx++) {
+        for (int gz = -d; gz < d; gz++) {
+            // World coordinates of this cloud cell
+            float x0 = static_cast<float>(centerX + gx * s);
+            float x1 = static_cast<float>(centerX + (gx + 1) * s);
+            float z0 = static_cast<float>(centerZ + gz * s);
+            float z1 = static_cast<float>(centerZ + (gz + 1) * s);
+
+            // UV coords based on world position + cloud drift
+            float u0 = static_cast<float>(x0 + cloudDrift) * scale;
+            float u1 = static_cast<float>(x1 + cloudDrift) * scale;
+            float v0 = z0 * scale;
+            float v1 = z1 * scale;
+
+            glTexCoord2f(u0, v1); glVertex3f(x0, cloudY, z1);
+            glTexCoord2f(u1, v1); glVertex3f(x1, cloudY, z1);
+            glTexCoord2f(u1, v0); glVertex3f(x1, cloudY, z0);
+            glTexCoord2f(u0, v0); glVertex3f(x0, cloudY, z0);
         }
+    }
 
-        for (int cx = -radius; cx <= radius; ++cx) {
-            for (int cz = -radius; cz <= radius; ++cz) {
-                // Calculate world position of this cloud chunk (centered on player)
-                float chunkX = static_cast<float>(baseX) + cx * chunkWorldSize;
-                float chunkZ = static_cast<float>(baseZ) + cz * chunkWorldSize;
+    glEnd();
 
-                // UV coordinates based on world position + cloud drift
-                // Using world position ensures seamless tiling
-                float u0 = static_cast<float>(chunkX + cloudDrift) * uvScale;
-                float v0 = chunkZ * uvScale;
-                float u1 = static_cast<float>(chunkX + cloudDrift + chunkWorldSize) * uvScale;
-                float v1 = (chunkZ + chunkWorldSize) * uvScale;
+    // Restore state
+    glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+    glDisable(GL_BLEND);
+    glEnable(GL_CULL_FACE);
+}
 
-                float x0 = chunkX;
-                float x1 = chunkX + cellsPerChunk * ss;
-                float z0 = chunkZ;
-                float z1 = chunkZ + cellsPerChunk * ss;
-                float y0 = cloudAltitude;
-                float y1 = cloudAltitude + h;
+void LevelRenderer::renderAdvancedClouds(float partialTick) {
+    // Fancy graphics: 3D cloud boxes - exact port from Java using Tesselator
+    if (!minecraft || !minecraft->player) return;
 
-                glBegin(GL_QUADS);
+    // Ensure proper GL state for cloud rendering
+    glDisable(GL_CULL_FACE);
+    glDepthMask(GL_TRUE);  // Ensure depth writing is enabled
 
-                // Bottom face (darkest) - visible from below
-                glColor4f(cr * 0.7f, cg * 0.7f, cb * 0.7f, 0.8f);
-                glTexCoord2f(u0, v1); glVertex3f(x0, y0, z1);
-                glTexCoord2f(u1, v1); glVertex3f(x1, y0, z1);
-                glTexCoord2f(u1, v0); glVertex3f(x1, y0, z0);
-                glTexCoord2f(u0, v0); glVertex3f(x0, y0, z0);
+    LocalPlayer* player = minecraft->player;
+    Tesselator& t = Tesselator::getInstance();
 
-                // Top face (brightest) - visible from above
-                glColor4f(cr, cg, cb, 0.8f);
-                glTexCoord2f(u0, v0); glVertex3f(x0, y1, z0);
-                glTexCoord2f(u1, v0); glVertex3f(x1, y1, z0);
-                glTexCoord2f(u1, v1); glVertex3f(x1, y1, z1);
-                glTexCoord2f(u0, v1); glVertex3f(x0, y1, z1);
+    float ss = 12.0f;
+    float h = 4.0f;
 
-                // Side faces - rendered as vertical slices for 3D effect
-                float sliceUVStep = ss * uvScale;  // UV step per slice
+    // Java: yOffs = player interpolated Y position
+    float yOffs = static_cast<float>(player->prevY + (player->y - player->prevY) * partialTick);
 
-                glColor4f(cr * 0.9f, cg * 0.9f, cb * 0.9f, 0.8f);
+    // Java: xo and zo in scaled coordinates
+    double xo = (player->prevX + (player->x - player->prevX) * partialTick +
+                 (minecraft->ticks + partialTick) * 0.03) / ss;
+    double zo = (player->prevZ + (player->z - player->prevZ) * partialTick) / ss + 0.33;
 
-                // West side (-X)
-                for (int i = 0; i < cellsPerChunk; ++i) {
-                    float xi = x0 + i * ss;
-                    float ui = u0 + i * sliceUVStep;
-                    glTexCoord2f(ui, v0); glVertex3f(xi, y0, z0);
-                    glTexCoord2f(ui, v0); glVertex3f(xi, y1, z0);
-                    glTexCoord2f(ui, v1); glVertex3f(xi, y1, z1);
-                    glTexCoord2f(ui, v1); glVertex3f(xi, y0, z1);
+    // Java: yy = 108.0F - yOffs + 0.33F (camera-relative Y)
+    float yy = 108.0f - yOffs + 0.33f;
+
+    int xOffs = static_cast<int>(std::floor(xo / 2048.0));
+    int zOffs = static_cast<int>(std::floor(zo / 2048.0));
+    xo -= xOffs * 2048;
+    zo -= zOffs * 2048;
+
+    Textures::getInstance().bindTexture("resources/environment/clouds.png");
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    // Cloud color (simplified - Java uses level.getCloudColor)
+    float timeOfDay = getTimeOfDay();
+    float dayBrightness = std::cos(timeOfDay * 3.14159265f * 2.0f) * 0.5f + 0.5f;
+    float cr = 0.9f * dayBrightness + 0.1f;
+    float cg = 0.9f * dayBrightness + 0.1f;
+    float cb = 1.0f * dayBrightness + 0.1f;
+
+    float scale = 0.00390625f;  // 1/256
+    float uo = static_cast<float>(std::floor(xo)) * scale;
+    float vo = static_cast<float>(std::floor(zo)) * scale;
+    float xoffs = static_cast<float>(xo - std::floor(xo));
+    float zoffs = static_cast<float>(zo - std::floor(zo));
+    int D = 8;
+    int radius = 3;
+    float e = 9.765625E-4f;
+
+    // Java doesn't push/pop matrix - it applies glScalef directly on camera matrix
+    // Java's camera has: Trans(0,0,-0.1) * Rot (from moveCameraToPlayer)
+    // Our camera has: Rot * Trans(-playerPos)
+    // We need rotation-only like Java, so create fresh matrix
+    float pitch = player->getInterpolatedXRot(partialTick);
+    float yaw = player->getInterpolatedYRot(partialTick);
+
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+    glLoadIdentity();
+    // Match Java's moveCameraToPlayer exactly:
+    glTranslatef(0.0f, 0.0f, -0.1f);
+    glRotatef(pitch, 1.0f, 0.0f, 0.0f);
+    glRotatef(yaw + 180.0f, 0.0f, 1.0f, 0.0f);
+    // Then Java applies glScalef(ss, 1, ss) for clouds
+    glScalef(ss, 1.0f, ss);
+
+    // DIAGNOSTIC: Single pass to test if side faces render at all
+    // Two-pass rendering exactly like Java (lines 787-868)
+    // Pass 0: Write depth only (color masked off)
+    // Pass 1: Write color where GL_LEQUAL depth test passes
+    for (int pass = 0; pass < 1; ++pass) {  // Changed to single pass for testing
+        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);  // Always write color
+        // if (pass == 0) {
+        //     glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+        // } else {
+        //     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+        // }
+
+        for (int xPos = -radius + 1; xPos <= radius; ++xPos) {
+            for (int zPos = -radius + 1; zPos <= radius; ++zPos) {
+                t.begin(GL_QUADS);
+
+                float xx = static_cast<float>(xPos * D);
+                float zz = static_cast<float>(zPos * D);
+                float xp = xx - xoffs;
+                float zp = zz - zoffs;
+
+                // Bottom face - using yy (relative Y) exactly like Java
+                if (yy > -h - 1.0f) {
+                    t.color(cr * 0.7f, cg * 0.7f, cb * 0.7f, 0.8f);
+                    t.normal(0.0f, -1.0f, 0.0f);
+                    t.vertexUV(xp + 0.0f, yy + 0.0f, zp + D, (xx + 0.0f) * scale + uo, (zz + D) * scale + vo);
+                    t.vertexUV(xp + D, yy + 0.0f, zp + D, (xx + D) * scale + uo, (zz + D) * scale + vo);
+                    t.vertexUV(xp + D, yy + 0.0f, zp + 0.0f, (xx + D) * scale + uo, (zz + 0.0f) * scale + vo);
+                    t.vertexUV(xp + 0.0f, yy + 0.0f, zp + 0.0f, (xx + 0.0f) * scale + uo, (zz + 0.0f) * scale + vo);
                 }
 
-                // East side (+X)
-                for (int i = 0; i < cellsPerChunk; ++i) {
-                    float xi = x0 + (i + 1) * ss;
-                    float ui = u0 + (i + 1) * sliceUVStep;
-                    glTexCoord2f(ui, v1); glVertex3f(xi, y0, z1);
-                    glTexCoord2f(ui, v1); glVertex3f(xi, y1, z1);
-                    glTexCoord2f(ui, v0); glVertex3f(xi, y1, z0);
-                    glTexCoord2f(ui, v0); glVertex3f(xi, y0, z0);
+                // Top face
+                if (yy <= h + 1.0f) {
+                    t.color(cr, cg, cb, 0.8f);
+                    t.normal(0.0f, 1.0f, 0.0f);
+                    t.vertexUV(xp + 0.0f, yy + h - e, zp + D, (xx + 0.0f) * scale + uo, (zz + D) * scale + vo);
+                    t.vertexUV(xp + D, yy + h - e, zp + D, (xx + D) * scale + uo, (zz + D) * scale + vo);
+                    t.vertexUV(xp + D, yy + h - e, zp + 0.0f, (xx + D) * scale + uo, (zz + 0.0f) * scale + vo);
+                    t.vertexUV(xp + 0.0f, yy + h - e, zp + 0.0f, (xx + 0.0f) * scale + uo, (zz + 0.0f) * scale + vo);
                 }
 
-                glColor4f(cr * 0.8f, cg * 0.8f, cb * 0.8f, 0.8f);
-
-                // North side (-Z)
-                for (int i = 0; i < cellsPerChunk; ++i) {
-                    float zi = z0 + i * ss;
-                    float vi = v0 + i * sliceUVStep;
-                    glTexCoord2f(u1, vi); glVertex3f(x1, y0, zi);
-                    glTexCoord2f(u1, vi); glVertex3f(x1, y1, zi);
-                    glTexCoord2f(u0, vi); glVertex3f(x0, y1, zi);
-                    glTexCoord2f(u0, vi); glVertex3f(x0, y0, zi);
+                // West faces (-X) - internal slices
+                t.color(cr * 0.9f, cg * 0.9f, cb * 0.9f, 0.8f);
+                if (xPos > -1) {
+                    t.normal(-1.0f, 0.0f, 0.0f);
+                    for (int i = 0; i < D; ++i) {
+                        t.vertexUV(xp + i + 0.0f, yy + 0.0f, zp + D, (xx + i + 0.5f) * scale + uo, (zz + D) * scale + vo);
+                        t.vertexUV(xp + i + 0.0f, yy + h, zp + D, (xx + i + 0.5f) * scale + uo, (zz + D) * scale + vo);
+                        t.vertexUV(xp + i + 0.0f, yy + h, zp + 0.0f, (xx + i + 0.5f) * scale + uo, (zz + 0.0f) * scale + vo);
+                        t.vertexUV(xp + i + 0.0f, yy + 0.0f, zp + 0.0f, (xx + i + 0.5f) * scale + uo, (zz + 0.0f) * scale + vo);
+                    }
                 }
 
-                // South side (+Z)
-                for (int i = 0; i < cellsPerChunk; ++i) {
-                    float zi = z0 + (i + 1) * ss;
-                    float vi = v0 + (i + 1) * sliceUVStep;
-                    glTexCoord2f(u0, vi); glVertex3f(x0, y0, zi);
-                    glTexCoord2f(u0, vi); glVertex3f(x0, y1, zi);
-                    glTexCoord2f(u1, vi); glVertex3f(x1, y1, zi);
-                    glTexCoord2f(u1, vi); glVertex3f(x1, y0, zi);
+                // East faces (+X) - internal slices
+                if (xPos <= 1) {
+                    t.normal(1.0f, 0.0f, 0.0f);
+                    for (int i = 0; i < D; ++i) {
+                        t.vertexUV(xp + i + 1.0f - e, yy + 0.0f, zp + D, (xx + i + 0.5f) * scale + uo, (zz + D) * scale + vo);
+                        t.vertexUV(xp + i + 1.0f - e, yy + h, zp + D, (xx + i + 0.5f) * scale + uo, (zz + D) * scale + vo);
+                        t.vertexUV(xp + i + 1.0f - e, yy + h, zp + 0.0f, (xx + i + 0.5f) * scale + uo, (zz + 0.0f) * scale + vo);
+                        t.vertexUV(xp + i + 1.0f - e, yy + 0.0f, zp + 0.0f, (xx + i + 0.5f) * scale + uo, (zz + 0.0f) * scale + vo);
+                    }
                 }
 
-                glEnd();
+                // North faces (-Z) - internal slices
+                t.color(cr * 0.8f, cg * 0.8f, cb * 0.8f, 0.8f);
+                if (zPos > -1) {
+                    t.normal(0.0f, 0.0f, -1.0f);
+                    for (int i = 0; i < D; ++i) {
+                        t.vertexUV(xp + 0.0f, yy + h, zp + i + 0.0f, (xx + 0.0f) * scale + uo, (zz + i + 0.5f) * scale + vo);
+                        t.vertexUV(xp + D, yy + h, zp + i + 0.0f, (xx + D) * scale + uo, (zz + i + 0.5f) * scale + vo);
+                        t.vertexUV(xp + D, yy + 0.0f, zp + i + 0.0f, (xx + D) * scale + uo, (zz + i + 0.5f) * scale + vo);
+                        t.vertexUV(xp + 0.0f, yy + 0.0f, zp + i + 0.0f, (xx + 0.0f) * scale + uo, (zz + i + 0.5f) * scale + vo);
+                    }
+                }
+
+                // South faces (+Z) - internal slices
+                if (zPos <= 1) {
+                    t.normal(0.0f, 0.0f, 1.0f);
+                    for (int i = 0; i < D; ++i) {
+                        t.vertexUV(xp + 0.0f, yy + h, zp + i + 1.0f - e, (xx + 0.0f) * scale + uo, (zz + i + 0.5f) * scale + vo);
+                        t.vertexUV(xp + D, yy + h, zp + i + 1.0f - e, (xx + D) * scale + uo, (zz + i + 0.5f) * scale + vo);
+                        t.vertexUV(xp + D, yy + 0.0f, zp + i + 1.0f - e, (xx + D) * scale + uo, (zz + i + 0.5f) * scale + vo);
+                        t.vertexUV(xp + 0.0f, yy + 0.0f, zp + i + 1.0f - e, (xx + 0.0f) * scale + uo, (zz + i + 0.5f) * scale + vo);
+                    }
+                }
+
+                t.end();
             }
         }
     }
 
-    // Restore state
-    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    // Restore matrix and state
+    glPopMatrix();
     glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
     glDisable(GL_BLEND);
     glEnable(GL_CULL_FACE);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 }
 
 void LevelRenderer::renderEntities(float partialTick) {

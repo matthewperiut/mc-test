@@ -71,6 +71,7 @@ set(GUI_SOURCES
     src/gui/Gui.cpp
     src/gui/Screen.cpp
     src/gui/Button.cpp
+    src/gui/SlideButton.cpp
     src/gui/InventoryScreen.cpp
     src/gui/PauseScreen.cpp
     src/gui/OptionsScreen.cpp

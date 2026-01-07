@@ -6,6 +6,17 @@ namespace mc {
 
 Options::Options() {}
 
+// Helper to parse float that also accepts "true"/"false" for backwards compatibility
+static float readFloat(const std::string& value) {
+    if (value == "true") return 1.0f;
+    if (value == "false") return 0.0f;
+    try {
+        return std::stof(value);
+    } catch (...) {
+        return 0.0f;
+    }
+}
+
 void Options::load(const std::string& path) {
     std::ifstream file(path);
     if (!file.is_open()) return;
@@ -18,21 +29,25 @@ void Options::load(const std::string& path) {
         std::string key = line.substr(0, pos);
         std::string value = line.substr(pos + 1);
 
-        if (key == "music") music = (value == "true");
-        else if (key == "sound") sound = (value == "true");
+        // Audio (float 0.0-1.0, like Java)
+        if (key == "music") music = readFloat(value);
+        else if (key == "sound") sound = readFloat(value);
+        // Controls
         else if (key == "invertYMouse") invertYMouse = (value == "true");
-        else if (key == "mouseSensitivity") mouseSensitivity = std::stof(value);
-        else if (key == "renderDistance") renderDistance = std::stoi(value);
-        else if (key == "viewBobbing") viewBobbing = std::stoi(value);
+        else if (key == "mouseSensitivity") mouseSensitivity = readFloat(value);
+        // Video
+        else if (key == "viewDistance" || key == "renderDistance") renderDistance = std::stoi(value);
+        else if (key == "bobView" || key == "viewBobbing") viewBobbing = (value == "true" || value == "1");
         else if (key == "anaglyph3d") anaglyph3d = (value == "true");
-        else if (key == "advancedOpengl") advancedOpengl = (value == "true");
+        else if (key == "limitFramerate") limitFramerate = (value == "true");
         else if (key == "fancyGraphics") fancyGraphics = (value == "true");
-        else if (key == "smoothLighting") smoothLighting = (value == "true");
+        // Game
+        else if (key == "difficulty") difficulty = std::stoi(value);
+        // Misc
         else if (key == "fov") fov = std::stof(value);
-        else if (key == "gamma") gamma = std::stof(value);
         else if (key == "guiScale") guiScale = std::stoi(value);
         else if (key == "lastServer") lastServer = value;
-        else if (key == "username") username = value;
+        else if (key == "skin") skin = value;
     }
 }
 
@@ -40,21 +55,22 @@ void Options::save(const std::string& path) {
     std::ofstream file(path);
     if (!file.is_open()) return;
 
-    file << "music:" << (music ? "true" : "false") << "\n";
-    file << "sound:" << (sound ? "true" : "false") << "\n";
+    // Match Java's options.txt format
+    file << "music:" << music << "\n";
+    file << "sound:" << sound << "\n";
     file << "invertYMouse:" << (invertYMouse ? "true" : "false") << "\n";
     file << "mouseSensitivity:" << mouseSensitivity << "\n";
-    file << "renderDistance:" << renderDistance << "\n";
-    file << "viewBobbing:" << viewBobbing << "\n";
+    file << "viewDistance:" << renderDistance << "\n";
+    file << "bobView:" << (viewBobbing ? "true" : "false") << "\n";
     file << "anaglyph3d:" << (anaglyph3d ? "true" : "false") << "\n";
-    file << "advancedOpengl:" << (advancedOpengl ? "true" : "false") << "\n";
+    file << "limitFramerate:" << (limitFramerate ? "true" : "false") << "\n";
+    file << "difficulty:" << difficulty << "\n";
     file << "fancyGraphics:" << (fancyGraphics ? "true" : "false") << "\n";
-    file << "smoothLighting:" << (smoothLighting ? "true" : "false") << "\n";
-    file << "fov:" << fov << "\n";
-    file << "gamma:" << gamma << "\n";
-    file << "guiScale:" << guiScale << "\n";
+    file << "skin:" << skin << "\n";
     file << "lastServer:" << lastServer << "\n";
-    file << "username:" << username << "\n";
+    // C++ additions
+    file << "fov:" << fov << "\n";
+    file << "guiScale:" << guiScale << "\n";
 }
 
 std::string Options::getKeyName(int keyCode) {

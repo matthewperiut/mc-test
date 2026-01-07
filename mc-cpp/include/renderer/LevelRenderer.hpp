@@ -57,6 +57,8 @@ public:
     void render(float partialTick, int pass);
     void renderSky(float partialTick);
     void renderClouds(float partialTick);
+    void renderFastClouds(float partialTick);     // Flat clouds for Fast graphics
+    void renderAdvancedClouds(float partialTick); // 3D clouds for Fancy graphics
     void renderEntities(float partialTick);
 
     // Update chunks

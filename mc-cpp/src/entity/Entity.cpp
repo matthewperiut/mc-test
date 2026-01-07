@@ -28,6 +28,7 @@ Entity::Entity(Level* level)
     , removed(false)
     , heightOffset(0.0f)
     , eyeHeight(1.62f)
+    , noClip(false)
     , blocksBuilding(false)  // Java: Entity sets this to false, Mob sets to true
     , level(level)
     , entityId(nextEntityId++)
@@ -77,7 +78,7 @@ void Entity::updateBoundingBox() {
 }
 
 void Entity::move(double dx, double dy, double dz) {
-    if (noPhysicsCount > 0) {
+    if (noPhysicsCount > 0 || noClip) {
         x += dx;
         y += dy;
         z += dz;

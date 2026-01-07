@@ -2,6 +2,7 @@
 
 #include "gui/Screen.hpp"
 #include "gui/Button.hpp"
+#include "gui/SlideButton.hpp"
 #include <vector>
 #include <memory>
 
@@ -22,22 +23,43 @@ public:
 private:
     Screen* parentScreen;
     std::vector<std::unique_ptr<Button>> buttons;
+    // Pointers to slider buttons for easy access (owned by buttons vector)
+    SlideButton* musicSlider = nullptr;
+    SlideButton* soundSlider = nullptr;
+    SlideButton* sensitivitySlider = nullptr;
     int mouseX, mouseY;
 
     void initButtons();
     void buttonClicked(int buttonId);
     void updateButtonLabels();
 
-    std::string getGuiScaleLabel() const;
+    // Label generators matching Java Option enum
+    std::string getMusicLabel() const;
+    std::string getSoundLabel() const;
+    std::string getInvertMouseLabel() const;
+    std::string getSensitivityLabel() const;
     std::string getRenderDistanceLabel() const;
-    std::string getFovLabel() const;
+    std::string getViewBobbingLabel() const;
+    std::string getAnaglyphLabel() const;
+    std::string getLimitFramerateLabel() const;
+    std::string getDifficultyLabel() const;
+    std::string getGraphicsLabel() const;
 
-    static constexpr int BUTTON_DONE = 0;
-    static constexpr int BUTTON_GUI_SCALE = 1;
-    static constexpr int BUTTON_RENDER_DISTANCE = 2;
-    static constexpr int BUTTON_FOV = 3;
-    static constexpr int BUTTON_MUSIC = 4;
-    static constexpr int BUTTON_SOUND = 5;
+    // Button IDs matching Java Option.ordinal() order
+    // Progress options (sliders in Java, cycle buttons here for now)
+    static constexpr int BUTTON_MUSIC = 0;
+    static constexpr int BUTTON_SOUND = 1;
+    static constexpr int BUTTON_INVERT_MOUSE = 2;
+    static constexpr int BUTTON_SENSITIVITY = 3;
+    static constexpr int BUTTON_RENDER_DISTANCE = 4;
+    static constexpr int BUTTON_VIEW_BOBBING = 5;
+    static constexpr int BUTTON_ANAGLYPH = 6;
+    static constexpr int BUTTON_LIMIT_FRAMERATE = 7;
+    static constexpr int BUTTON_DIFFICULTY = 8;
+    static constexpr int BUTTON_GRAPHICS = 9;
+    // Special buttons
+    static constexpr int BUTTON_CONTROLS = 100;
+    static constexpr int BUTTON_DONE = 200;
 };
 
 } // namespace mc

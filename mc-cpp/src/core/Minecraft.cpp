@@ -444,6 +444,14 @@ void Minecraft::onKeyPress(int key, int scancode, int action, int mods) {
                 }
                 break;
 
+            case GLFW_KEY_N:
+                // Toggle noclip mode
+                if (player) {
+                    player->noClip = !player->noClip;
+                    player->flying = player->noClip;  // Enable flying with noclip
+                }
+                break;
+
             // Number keys 1-9 for hotbar slot selection (matching Java)
             case GLFW_KEY_1: if (player && player->inventory) { player->selectedSlot = 0; player->inventory->selected = 0; } break;
             case GLFW_KEY_2: if (player && player->inventory) { player->selectedSlot = 1; player->inventory->selected = 1; } break;
