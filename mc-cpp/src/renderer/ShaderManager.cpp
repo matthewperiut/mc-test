@@ -1,0 +1,188 @@
+#include "renderer/ShaderManager.hpp"
+#include <iostream>
+
+namespace mc {
+
+ShaderManager& ShaderManager::getInstance() {
+    static ShaderManager instance;
+    return instance;
+}
+
+void ShaderManager::init() {
+    if (initialized) return;
+
+    if (!worldShader.load("shaders/world.vert", "shaders/world.frag")) {
+        std::cerr << "Failed to load world shader" << std::endl;
+    }
+
+    if (!skyShader.load("shaders/sky.vert", "shaders/sky.frag")) {
+        std::cerr << "Failed to load sky shader" << std::endl;
+    }
+
+    if (!guiShader.load("shaders/gui.vert", "shaders/gui.frag")) {
+        std::cerr << "Failed to load gui shader" << std::endl;
+    }
+
+    if (!lineShader.load("shaders/line.vert", "shaders/line.frag")) {
+        std::cerr << "Failed to load line shader" << std::endl;
+    }
+
+    initialized = true;
+}
+
+void ShaderManager::destroy() {
+    initialized = false;
+}
+
+void ShaderManager::useWorldShader() {
+    worldShader.use();
+    currentShader = &worldShader;
+    updateMatrices();
+    worldShader.setInt("uTexture", 0);
+    worldShader.setInt("uUseTexture", 1);  // Default to using texture
+    worldShader.setFloat("uFogStart", fogStart);
+    worldShader.setFloat("uFogEnd", fogEnd);
+    worldShader.setVec3("uFogColor", fogR, fogG, fogB);
+    worldShader.setFloat("uAlphaTest", alphaThreshold);
+}
+
+void ShaderManager::useSkyShader() {
+    skyShader.use();
+    currentShader = &skyShader;
+    updateMatrices();
+    skyShader.setInt("uTexture", 0);
+}
+
+void ShaderManager::useGuiShader() {
+    guiShader.use();
+    currentShader = &guiShader;
+    updateMatrices();
+    guiShader.setInt("uTexture", 0);
+    guiShader.setFloat("uAlphaTest", 0.1f);  // Discard nearly transparent pixels
+}
+
+void ShaderManager::useLineShader() {
+    lineShader.use();
+    currentShader = &lineShader;
+    updateMatrices();
+}
+
+void ShaderManager::updateMatrices() {
+    if (!currentShader) return;
+
+    glm::mat4 mvp = MatrixStack::getMVP();
+    glm::mat4 mv = MatrixStack::modelview().get();
+
+    currentShader->setMat4("uMVP", glm::value_ptr(mvp));
+    currentShader->setMat4("uModelView", glm::value_ptr(mv));
+}
+
+void ShaderManager::updateMatrices(const glm::mat4& projection, const glm::mat4& modelview) {
+    if (!currentShader) return;
+
+    glm::mat4 mvp = projection * modelview;
+    currentShader->setMat4("uMVP", glm::value_ptr(mvp));
+    currentShader->setMat4("uModelView", glm::value_ptr(modelview));
+}
+
+void ShaderManager::updateFog(float start, float end, float r, float g, float b) {
+    fogStart = start;
+    fogEnd = end;
+    fogR = r;
+    fogG = g;
+    fogB = b;
+
+    if (currentShader == &worldShader) {
+        worldShader.setFloat("uFogStart", fogStart);
+        worldShader.setFloat("uFogEnd", fogEnd);
+        worldShader.setVec3("uFogColor", fogR, fogG, fogB);
+    }
+}
+
+void ShaderManager::setAlphaTest(float threshold) {
+    alphaThreshold = threshold;
+    if (currentShader == &worldShader) {
+        worldShader.setFloat("uAlphaTest", alphaThreshold);
+    } else if (currentShader == &guiShader) {
+        guiShader.setFloat("uAlphaTest", alphaThreshold);
+    }
+}
+
+void ShaderManager::setTexture(int unit) {
+    if (currentShader) {
+        currentShader->setInt("uTexture", unit);
+    }
+}
+
+void ShaderManager::setSkyColor(float r, float g, float b, float a) {
+    if (currentShader == &skyShader) {
+        skyShader.setVec4("uColor", r, g, b, a);
+        skyShader.setInt("uUseUniformColor", 1);
+    }
+}
+
+void ShaderManager::setUseTexture(bool use) {
+    if (currentShader) {
+        currentShader->setInt("uUseTexture", use ? 1 : 0);
+        // When using textures, use vertex colors instead of uniform color
+        if (use && (currentShader == &skyShader || currentShader == &guiShader)) {
+            currentShader->setInt("uUseUniformColor", 0);
+        }
+    }
+}
+
+void ShaderManager::setGuiColor(float r, float g, float b, float a) {
+    if (currentShader == &guiShader) {
+        guiShader.setVec4("uColor", r, g, b, a);
+        guiShader.setInt("uUseUniformColor", 1);
+    }
+}
+
+void ShaderManager::setUseVertexColor(bool use) {
+    if (currentShader) {
+        currentShader->setInt("uUseUniformColor", use ? 0 : 1);
+    }
+}
+
+void ShaderManager::enableLighting(bool enable) {
+    if (currentShader == &worldShader) {
+        worldShader.setInt("uEnableLighting", enable ? 1 : 0);
+    }
+}
+
+void ShaderManager::setLightDirections(float dir0x, float dir0y, float dir0z,
+                                       float dir1x, float dir1y, float dir1z) {
+    if (currentShader == &worldShader) {
+        worldShader.setVec3("uLightDir0", dir0x, dir0y, dir0z);
+        worldShader.setVec3("uLightDir1", dir1x, dir1y, dir1z);
+    }
+}
+
+void ShaderManager::setLightParams(float ambient, float diffuse) {
+    if (currentShader == &worldShader) {
+        worldShader.setFloat("uAmbient", ambient);
+        worldShader.setFloat("uDiffuse", diffuse);
+    }
+}
+
+void ShaderManager::setBrightness(float brightness) {
+    if (currentShader == &worldShader) {
+        worldShader.setFloat("uBrightness", brightness);
+    }
+}
+
+void ShaderManager::setSkyBrightness(float skyBrightness) {
+    if (currentShader == &worldShader) {
+        worldShader.setFloat("uSkyBrightness", skyBrightness);
+    }
+}
+
+void ShaderManager::updateNormalMatrix() {
+    if (!currentShader) return;
+
+    glm::mat4 mv = MatrixStack::modelview().get();
+    glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(mv)));
+    currentShader->setMat3("uNormalMatrix", glm::value_ptr(normalMatrix));
+}
+
+} // namespace mc

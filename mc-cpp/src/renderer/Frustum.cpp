@@ -1,5 +1,5 @@
 #include "renderer/Frustum.hpp"
-#include <GL/glew.h>
+#include "renderer/MatrixStack.hpp"
 #include <cmath>
 
 namespace mc {
@@ -14,65 +14,67 @@ void Frustum::update() {
 }
 
 void Frustum::extractPlanes() {
-    float projection[16];
-    float modelview[16];
+    // Get matrices from MatrixStack instead of legacy OpenGL state
+    glm::mat4 proj = MatrixStack::projection().get();
+    glm::mat4 mv = MatrixStack::modelview().get();
+
+    // Compute clip matrix = projection * modelview
+    glm::mat4 clipMat = proj * mv;
+
+    // Extract to row-major float array for our plane extraction
     float clip[16];
-
-    glGetFloatv(GL_PROJECTION_MATRIX, projection);
-    glGetFloatv(GL_MODELVIEW_MATRIX, modelview);
-
-    // Multiply projection * modelview
-    for (int i = 0; i < 4; i++) {
-        for (int j = 0; j < 4; j++) {
-            clip[i * 4 + j] =
-                modelview[i * 4 + 0] * projection[0 * 4 + j] +
-                modelview[i * 4 + 1] * projection[1 * 4 + j] +
-                modelview[i * 4 + 2] * projection[2 * 4 + j] +
-                modelview[i * 4 + 3] * projection[3 * 4 + j];
+    const float* pClip = glm::value_ptr(clipMat);
+    // GLM stores matrices in column-major, transpose for our calculation
+    for (int col = 0; col < 4; col++) {
+        for (int row = 0; row < 4; row++) {
+            clip[row * 4 + col] = pClip[col * 4 + row];
         }
     }
 
-    // Extract planes from clip matrix
-    // Right plane
-    planes[0][0] = clip[3] - clip[0];
-    planes[0][1] = clip[7] - clip[4];
-    planes[0][2] = clip[11] - clip[8];
-    planes[0][3] = clip[15] - clip[12];
+    // Extract planes from clip matrix (row-major storage after transpose)
+    // Standard Gribb/Hartmann method: plane = row[3] +/- row[i]
+    // In row-major: row[i] = clip[i*4 + 0..3]
+
+    // Right plane: row3 - row0
+    planes[0][0] = clip[12] - clip[0];
+    planes[0][1] = clip[13] - clip[1];
+    planes[0][2] = clip[14] - clip[2];
+    planes[0][3] = clip[15] - clip[3];
     normalizePlane(0);
 
-    // Left plane
-    planes[1][0] = clip[3] + clip[0];
-    planes[1][1] = clip[7] + clip[4];
-    planes[1][2] = clip[11] + clip[8];
-    planes[1][3] = clip[15] + clip[12];
+    // Left plane: row3 + row0
+    planes[1][0] = clip[12] + clip[0];
+    planes[1][1] = clip[13] + clip[1];
+    planes[1][2] = clip[14] + clip[2];
+    planes[1][3] = clip[15] + clip[3];
     normalizePlane(1);
 
-    // Bottom plane
-    planes[2][0] = clip[3] + clip[1];
-    planes[2][1] = clip[7] + clip[5];
-    planes[2][2] = clip[11] + clip[9];
-    planes[2][3] = clip[15] + clip[13];
+    // Bottom plane: row3 + row1
+    planes[2][0] = clip[12] + clip[4];
+    planes[2][1] = clip[13] + clip[5];
+    planes[2][2] = clip[14] + clip[6];
+    planes[2][3] = clip[15] + clip[7];
     normalizePlane(2);
 
-    // Top plane
-    planes[3][0] = clip[3] - clip[1];
-    planes[3][1] = clip[7] - clip[5];
-    planes[3][2] = clip[11] - clip[9];
-    planes[3][3] = clip[15] - clip[13];
+    // Top plane: row3 - row1
+    planes[3][0] = clip[12] - clip[4];
+    planes[3][1] = clip[13] - clip[5];
+    planes[3][2] = clip[14] - clip[6];
+    planes[3][3] = clip[15] - clip[7];
     normalizePlane(3);
 
-    // Far plane
-    planes[4][0] = clip[3] - clip[2];
-    planes[4][1] = clip[7] - clip[6];
-    planes[4][2] = clip[11] - clip[10];
-    planes[4][3] = clip[15] - clip[14];
+    // Far plane: row3 - row2
+    planes[4][0] = clip[12] - clip[8];
+    planes[4][1] = clip[13] - clip[9];
+    planes[4][2] = clip[14] - clip[10];
+    planes[4][3] = clip[15] - clip[11];
     normalizePlane(4);
 
-    // Near plane
-    planes[5][0] = clip[3] + clip[2];
-    planes[5][1] = clip[7] + clip[6];
-    planes[5][2] = clip[11] + clip[10];
-    planes[5][3] = clip[15] + clip[14];
+    // Near plane: row3 + row2
+    planes[5][0] = clip[12] + clip[8];
+    planes[5][1] = clip[13] + clip[9];
+    planes[5][2] = clip[14] + clip[10];
+    planes[5][3] = clip[15] + clip[11];
     normalizePlane(5);
 }
 

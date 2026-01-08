@@ -1,6 +1,8 @@
 #include "gui/Screen.hpp"
 #include "core/Minecraft.hpp"
 #include "gui/Gui.hpp"
+#include "renderer/Tesselator.hpp"
+#include "renderer/ShaderManager.hpp"
 #include <GL/glew.h>
 
 namespace mc {
@@ -21,27 +23,21 @@ void Screen::init(Minecraft* mc, int w, int h) {
 }
 
 void Screen::render(int /*mouseX*/, int /*mouseY*/, float /*partialTick*/) {
-    // Base render - override in subclasses
 }
 
 void Screen::keyPressed(int /*key*/, int /*scancode*/, int /*action*/, int /*mods*/) {
-    // Override in subclasses
 }
 
 void Screen::mouseClicked(int /*button*/, int /*action*/) {
-    // Override in subclasses
 }
 
 void Screen::mouseMoved(double /*x*/, double /*y*/) {
-    // Override in subclasses
 }
 
 void Screen::mouseScrolled(double /*xoffset*/, double /*yoffset*/) {
-    // Override in subclasses
 }
 
 void Screen::charTyped(unsigned int /*codepoint*/) {
-    // Override in subclasses
 }
 
 void Screen::drawCenteredString(const std::string& text, int x, int y, int color) {
@@ -62,21 +58,24 @@ void Screen::fill(int x0, int y0, int x1, int y1, int color) {
     float g = ((color >> 8) & 0xFF) / 255.0f;
     float b = (color & 0xFF) / 255.0f;
 
-    glDisable(GL_TEXTURE_2D);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    glColor4f(r, g, b, a);
-    glBegin(GL_QUADS);
-    glVertex2f(static_cast<float>(x0), static_cast<float>(y1));
-    glVertex2f(static_cast<float>(x1), static_cast<float>(y1));
-    glVertex2f(static_cast<float>(x1), static_cast<float>(y0));
-    glVertex2f(static_cast<float>(x0), static_cast<float>(y0));
-    glEnd();
+    ShaderManager::getInstance().useGuiShader();
+    ShaderManager::getInstance().updateMatrices();
+    ShaderManager::getInstance().setUseTexture(false);
 
+    Tesselator& t = Tesselator::getInstance();
+    t.begin(GL_QUADS);
+    t.color(r, g, b, a);
+    t.vertex(static_cast<float>(x0), static_cast<float>(y1), 0.0f);
+    t.vertex(static_cast<float>(x1), static_cast<float>(y1), 0.0f);
+    t.vertex(static_cast<float>(x1), static_cast<float>(y0), 0.0f);
+    t.vertex(static_cast<float>(x0), static_cast<float>(y0), 0.0f);
+    t.end();
+
+    ShaderManager::getInstance().setUseTexture(true);
     glDisable(GL_BLEND);
-    glEnable(GL_TEXTURE_2D);
-    glColor4f(1, 1, 1, 1);
 }
 
 void Screen::fillGradient(int x0, int y0, int x1, int y1, int colorTop, int colorBottom) {
@@ -90,24 +89,27 @@ void Screen::fillGradient(int x0, int y0, int x1, int y1, int colorTop, int colo
     float g2 = ((colorBottom >> 8) & 0xFF) / 255.0f;
     float b2 = (colorBottom & 0xFF) / 255.0f;
 
-    glDisable(GL_TEXTURE_2D);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glShadeModel(GL_SMOOTH);
 
-    glBegin(GL_QUADS);
-    glColor4f(r1, g1, b1, a1);
-    glVertex2f(static_cast<float>(x1), static_cast<float>(y0));
-    glVertex2f(static_cast<float>(x0), static_cast<float>(y0));
-    glColor4f(r2, g2, b2, a2);
-    glVertex2f(static_cast<float>(x0), static_cast<float>(y1));
-    glVertex2f(static_cast<float>(x1), static_cast<float>(y1));
-    glEnd();
+    ShaderManager::getInstance().useGuiShader();
+    ShaderManager::getInstance().updateMatrices();
+    ShaderManager::getInstance().setUseTexture(false);
 
-    glShadeModel(GL_FLAT);
+    Tesselator& t = Tesselator::getInstance();
+    t.begin(GL_QUADS);
+    t.color(r1, g1, b1, a1);
+    t.vertex(static_cast<float>(x1), static_cast<float>(y0), 0.0f);
+    t.color(r1, g1, b1, a1);
+    t.vertex(static_cast<float>(x0), static_cast<float>(y0), 0.0f);
+    t.color(r2, g2, b2, a2);
+    t.vertex(static_cast<float>(x0), static_cast<float>(y1), 0.0f);
+    t.color(r2, g2, b2, a2);
+    t.vertex(static_cast<float>(x1), static_cast<float>(y1), 0.0f);
+    t.end();
+
+    ShaderManager::getInstance().setUseTexture(true);
     glDisable(GL_BLEND);
-    glEnable(GL_TEXTURE_2D);
-    glColor4f(1, 1, 1, 1);
 }
 
 } // namespace mc

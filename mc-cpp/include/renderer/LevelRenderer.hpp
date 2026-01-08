@@ -6,6 +6,7 @@
 #include "renderer/Frustum.hpp"
 #include <vector>
 #include <memory>
+#include <GL/glew.h>
 
 namespace mc {
 
@@ -41,12 +42,6 @@ public:
     float destroyProgress;
     int destroyX, destroyY, destroyZ;
 
-    // Display lists for sky rendering (matches Java)
-    unsigned int starList;
-    unsigned int skyList;
-    unsigned int darkList;
-    bool skyListsInitialized;
-
     LevelRenderer(Minecraft* minecraft, Level* level);
     ~LevelRenderer();
 
@@ -81,11 +76,12 @@ private:
     void disposeChunks();
     void sortChunks();
 
-    // Sky rendering helpers
-    void initSkyDisplayLists();
-    void buildStarList();
-    void buildSkyList();
-    void buildDarkList();
+    // Sky VAO initialization and building
+    void initSkyVAOs();
+    void disposeSkyVAOs();
+    void buildStarVAO();
+    void buildSkyVAO();
+    void buildDarkVAO();
     float getTimeOfDay() const;
     void getSkyColor(float timeOfDay, float& r, float& g, float& b) const;
     float* getSunriseColor(float timeOfDay) const;
@@ -93,6 +89,15 @@ private:
 
     // Entity rendering helpers
     void renderDroppedItemSprite(int icon, int copies, float playerYRot, unsigned int randomSeed);
+
+    // Sky VAOs (replacing display lists)
+    GLuint starVAO, starVBO, starEBO;
+    GLuint skyVAO, skyVBO, skyEBO;
+    GLuint darkVAO, darkVBO, darkEBO;
+    int starIndexCount;
+    int skyIndexCount;
+    int darkIndexCount;
+    bool skyVAOsInitialized;
 };
 
 } // namespace mc

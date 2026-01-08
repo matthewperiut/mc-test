@@ -36,6 +36,7 @@ private:
     int charWidths[256];  // Width of each character
 
     void drawChar(int charIndex, float x, float y);
+    void drawChar(int charIndex, float x, float y, float r, float g, float b, float a);
     void calculateCharWidths(const unsigned char* pixels, int width, int height);
 };
 

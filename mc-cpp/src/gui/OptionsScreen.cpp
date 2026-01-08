@@ -4,6 +4,8 @@
 #include "core/Minecraft.hpp"
 #include "core/Options.hpp"
 #include "renderer/LevelRenderer.hpp"
+#include "renderer/MatrixStack.hpp"
+#include "renderer/ShaderManager.hpp"
 #include "audio/SoundEngine.hpp"
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
@@ -32,11 +34,6 @@ void OptionsScreen::initButtons() {
     int centerX = width / 2;
     int startY = height / 6;
 
-    // Layout matching Java: Options.Option enum order
-    // Position formula: x = width/2 - 155 + (id % 2) * 160
-    //                   y = height/6 + 24 * (id / 2)
-
-    // Row 0: Music (0) and Sound (1) - SLIDERS
     auto music = std::make_unique<SlideButton>(
         BUTTON_MUSIC, centerX - 155, startY + 0, 150, 20,
         getMusicLabel(), minecraft->options.music);
@@ -49,7 +46,6 @@ void OptionsScreen::initButtons() {
     soundSlider = sound.get();
     buttons.push_back(std::move(sound));
 
-    // Row 1: Invert Mouse (2) and Sensitivity (3) - Sensitivity is SLIDER
     buttons.push_back(std::make_unique<Button>(
         BUTTON_INVERT_MOUSE, centerX - 155, startY + 24, 150, 20, getInvertMouseLabel()));
 
@@ -59,31 +55,26 @@ void OptionsScreen::initButtons() {
     sensitivitySlider = sensitivity.get();
     buttons.push_back(std::move(sensitivity));
 
-    // Row 2: Render Distance (4) and View Bobbing (5)
     buttons.push_back(std::make_unique<Button>(
         BUTTON_RENDER_DISTANCE, centerX - 155, startY + 48, 150, 20, getRenderDistanceLabel()));
     buttons.push_back(std::make_unique<Button>(
         BUTTON_VIEW_BOBBING, centerX + 5, startY + 48, 150, 20, getViewBobbingLabel()));
 
-    // Row 3: 3D Anaglyph (6) and Limit Framerate (7)
     buttons.push_back(std::make_unique<Button>(
         BUTTON_ANAGLYPH, centerX - 155, startY + 72, 150, 20, getAnaglyphLabel()));
     buttons.push_back(std::make_unique<Button>(
         BUTTON_LIMIT_FRAMERATE, centerX + 5, startY + 72, 150, 20, getLimitFramerateLabel()));
 
-    // Row 4: Difficulty (8) and Graphics (9)
     buttons.push_back(std::make_unique<Button>(
         BUTTON_DIFFICULTY, centerX - 155, startY + 96, 150, 20, getDifficultyLabel()));
     buttons.push_back(std::make_unique<Button>(
         BUTTON_GRAPHICS, centerX + 5, startY + 96, 150, 20, getGraphicsLabel()));
 
-    // Controls button (Java: height/6 + 120 + 12 = height/6 + 132)
     auto controlsBtn = std::make_unique<Button>(
         BUTTON_CONTROLS, centerX - 100, startY + 132, 200, 20, "Controls...");
-    controlsBtn->active = false;  // Non-functional for now
+    controlsBtn->active = false;
     buttons.push_back(std::move(controlsBtn));
 
-    // Done button (Java: height/6 + 168)
     buttons.push_back(std::make_unique<Button>(
         BUTTON_DONE, centerX - 100, startY + 168, 200, 20, "Done"));
 }
@@ -124,8 +115,6 @@ void OptionsScreen::updateButtonLabels() {
         }
     }
 }
-
-// Label generators matching Java's Options.getMessage()
 
 std::string OptionsScreen::getMusicLabel() const {
     float value = minecraft->options.music;
@@ -191,7 +180,6 @@ void OptionsScreen::render(int mx, int my, float partialTick) {
     mouseX = mx;
     mouseY = my;
 
-    // Update slider values and labels while dragging
     if (musicSlider && musicSlider->sliding) {
         minecraft->options.music = musicSlider->value;
         musicSlider->message = getMusicLabel();
@@ -205,26 +193,24 @@ void OptionsScreen::render(int mx, int my, float partialTick) {
         sensitivitySlider->message = getSensitivityLabel();
     }
 
-    // Set up 2D orthographic projection
-    glMatrixMode(GL_PROJECTION);
-    glPushMatrix();
-    glLoadIdentity();
-    glOrtho(0, width, height, 0, 1000.0, 3000.0);
+    // Set up 2D orthographic projection using MatrixStack
+    MatrixStack::projection().push();
+    MatrixStack::projection().loadIdentity();
+    MatrixStack::projection().ortho(0, static_cast<float>(width), static_cast<float>(height), 0, 1000.0f, 3000.0f);
 
-    glMatrixMode(GL_MODELVIEW);
-    glPushMatrix();
-    glLoadIdentity();
-    glTranslatef(0.0f, 0.0f, -2000.0f);
+    MatrixStack::modelview().push();
+    MatrixStack::modelview().loadIdentity();
+    MatrixStack::modelview().translate(0.0f, 0.0f, -2000.0f);
 
     // Set up 2D rendering state
     glDisable(GL_DEPTH_TEST);
-    glDisable(GL_LIGHTING);
     glDisable(GL_CULL_FACE);
-    glDisable(GL_FOG);
-    glEnable(GL_TEXTURE_2D);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+
+    ShaderManager::getInstance().useGuiShader();
+    ShaderManager::getInstance().updateMatrices();
+    ShaderManager::getInstance().setUseTexture(true);
 
     // Draw semi-transparent background
     fillGradient(0, 0, width, height, 0xC0101010, 0xD0101010);
@@ -238,10 +224,8 @@ void OptionsScreen::render(int mx, int my, float partialTick) {
     }
 
     // Restore projection
-    glMatrixMode(GL_PROJECTION);
-    glPopMatrix();
-    glMatrixMode(GL_MODELVIEW);
-    glPopMatrix();
+    MatrixStack::projection().pop();
+    MatrixStack::modelview().pop();
 
     // Restore 3D state
     glEnable(GL_DEPTH_TEST);
@@ -249,7 +233,6 @@ void OptionsScreen::render(int mx, int my, float partialTick) {
 }
 
 void OptionsScreen::removed() {
-    // Save options when leaving screen
     minecraft->options.save("options.txt");
 }
 
@@ -272,7 +255,6 @@ void OptionsScreen::keyPressed(int key, int scancode, int action, int mods) {
 void OptionsScreen::mouseClicked(int button, int action) {
     if (button == GLFW_MOUSE_BUTTON_LEFT) {
         if (action == GLFW_PRESS) {
-            // Check sliders first (they handle their own clicking)
             if (musicSlider && musicSlider->mousePressed(mouseX, mouseY)) {
                 minecraft->options.music = musicSlider->value;
                 musicSlider->message = getMusicLabel();
@@ -289,21 +271,17 @@ void OptionsScreen::mouseClicked(int button, int action) {
                 return;
             }
 
-            // Check regular buttons
             for (auto& btn : buttons) {
                 if (btn->active && btn->isMouseOver(mouseX, mouseY)) {
-                    // Skip sliders (already handled above)
                     if (btn->id == BUTTON_MUSIC || btn->id == BUTTON_SOUND || btn->id == BUTTON_SENSITIVITY) {
                         continue;
                     }
-                    // Play click sound (matching Java playUI: volume * 0.25)
                     SoundEngine::getInstance().playSound("random.click", 0.25f, 1.0f);
                     buttonClicked(btn->id);
                     break;
                 }
             }
         } else if (action == GLFW_RELEASE) {
-            // Release all sliders
             if (musicSlider) musicSlider->mouseReleased();
             if (soundSlider) soundSlider->mouseReleased();
             if (sensitivitySlider) sensitivitySlider->mouseReleased();
@@ -315,7 +293,6 @@ void OptionsScreen::mouseMoved(double x, double y) {
     mouseX = static_cast<int>(x);
     mouseY = static_cast<int>(y);
 
-    // Update sliders while dragging
     if (musicSlider && musicSlider->sliding) {
         musicSlider->mouseDragged(mouseX, mouseY);
         minecraft->options.music = musicSlider->value;
@@ -345,8 +322,6 @@ void OptionsScreen::buttonClicked(int buttonId) {
             break;
 
         case BUTTON_CONTROLS:
-            // TODO: Open controls screen
-            // minecraft->setScreen(new ControlsScreen(this, &minecraft->options));
             break;
 
         case BUTTON_INVERT_MOUSE:
@@ -355,7 +330,6 @@ void OptionsScreen::buttonClicked(int buttonId) {
             break;
 
         case BUTTON_RENDER_DISTANCE:
-            // Cycle: Far -> Normal -> Short -> Tiny -> Far
             minecraft->options.renderDistance = (minecraft->options.renderDistance + 1) % 4;
             updateButtonLabels();
             break;
@@ -367,8 +341,6 @@ void OptionsScreen::buttonClicked(int buttonId) {
 
         case BUTTON_ANAGLYPH:
             minecraft->options.anaglyph3d = !minecraft->options.anaglyph3d;
-            // TODO: Reload textures for anaglyph mode
-            // minecraft->textures.reloadAll();
             updateButtonLabels();
             break;
 
@@ -378,15 +350,12 @@ void OptionsScreen::buttonClicked(int buttonId) {
             break;
 
         case BUTTON_DIFFICULTY:
-            // Cycle: Peaceful -> Easy -> Normal -> Hard -> Peaceful
             minecraft->options.difficulty = (minecraft->options.difficulty + 1) % 4;
             updateButtonLabels();
             break;
 
         case BUTTON_GRAPHICS:
-            // Toggle Fancy/Fast graphics
             minecraft->options.fancyGraphics = !minecraft->options.fancyGraphics;
-            // Rebuild chunks when graphics mode changes (like Java)
             if (minecraft->levelRenderer) {
                 minecraft->levelRenderer->allChanged();
             }

@@ -3,6 +3,8 @@
 #include "renderer/LevelRenderer.hpp"
 #include "renderer/Tesselator.hpp"
 #include "renderer/Textures.hpp"
+#include "renderer/MatrixStack.hpp"
+#include "renderer/ShaderManager.hpp"
 #include "entity/LocalPlayer.hpp"
 #include "world/Level.hpp"
 #include "world/tile/Tile.hpp"
@@ -22,9 +24,9 @@ GameRenderer::GameRenderer(Minecraft* minecraft)
     , fogRed(0.5f), fogGreen(0.8f), fogBlue(1.0f)
     , fogStart(20.0f), fogEnd(80.0f)
     , bobbing(0), tilt(0)
-    , height(0.0f), oHeight(0.0f)  // Java: height = 0.0F, oHeight = 0.0F
-    , lastSlot(-1)                  // Java: lastSlot = -1
-    , selectedItem()                // Java: selectedItem = null (empty ItemStack)
+    , height(0.0f), oHeight(0.0f)
+    , lastSlot(-1)
+    , selectedItem()
     , screenWidth(854), screenHeight(480)
 {
 }
@@ -58,27 +60,21 @@ void GameRenderer::render(float partialTick) {
 }
 
 void GameRenderer::setupCamera(float partialTick) {
-    float fov = 70.0f;  // Could be from options
+    float fov = 70.0f;
     float nearPlane = 0.05f;
-    float farPlane = 256.0f;  // Could be based on render distance
+    float farPlane = 256.0f;
 
     setupProjection(fov, nearPlane, farPlane);
 
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
+    MatrixStack::modelview().loadIdentity();
 
     orientCamera(partialTick);
 }
 
 void GameRenderer::setupProjection(float fov, float nearPlane, float farPlane) {
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-
     float aspect = static_cast<float>(screenWidth) / static_cast<float>(screenHeight);
-    float ymax = nearPlane * std::tan(fov * Mth::DEG_TO_RAD * 0.5f);
-    float xmax = ymax * aspect;
-
-    glFrustum(-xmax, xmax, -ymax, ymax, nearPlane, farPlane);
+    MatrixStack::projection().loadIdentity();
+    MatrixStack::projection().perspective(fov, aspect, nearPlane, farPlane);
 }
 
 void GameRenderer::orientCamera(float partialTick) {
@@ -94,16 +90,15 @@ void GameRenderer::orientCamera(float partialTick) {
     float pitch = player->getInterpolatedXRot(partialTick);
     float yaw = player->getInterpolatedYRot(partialTick);
 
-    glRotatef(pitch, 1.0f, 0.0f, 0.0f);
-    glRotatef(yaw + 180.0f, 0.0f, 1.0f, 0.0f);
+    MatrixStack::modelview().rotate(pitch, 1.0f, 0.0f, 0.0f);
+    MatrixStack::modelview().rotate(yaw + 180.0f, 0.0f, 1.0f, 0.0f);
 
     // Apply camera position (at eye level)
-    // Java: y + eyeHeight - ySlideOffset (ySlideOffset provides smooth sneaking animation)
     double eyeX = player->getInterpolatedX(partialTick);
     double eyeY = player->getInterpolatedY(partialTick) + player->eyeHeight - player->getInterpolatedYSlideOffset(partialTick);
     double eyeZ = player->getInterpolatedZ(partialTick);
 
-    glTranslated(-eyeX, -eyeY, -eyeZ);
+    MatrixStack::modelview().translate(static_cast<float>(-eyeX), static_cast<float>(-eyeY), static_cast<float>(-eyeZ));
 }
 
 void GameRenderer::applyBobbing(float partialTick) {
@@ -115,27 +110,25 @@ void GameRenderer::applyBobbing(float partialTick) {
 
     // Apply bobbing
     float bobAngle = bob * Mth::PI;
-    glTranslatef(
+    MatrixStack::modelview().translate(
         Mth::sin(bobAngle) * bob * 0.5f,
         -std::abs(Mth::cos(bobAngle) * bob),
         0.0f
     );
-    glRotatef(Mth::sin(bobAngle) * bob * 3.0f, 0.0f, 0.0f, 1.0f);
-    glRotatef(std::abs(Mth::cos(bobAngle - 0.2f) * bob) * 5.0f, 1.0f, 0.0f, 0.0f);
+    MatrixStack::modelview().rotate(Mth::sin(bobAngle) * bob * 3.0f, 0.0f, 0.0f, 1.0f);
+    MatrixStack::modelview().rotate(std::abs(Mth::cos(bobAngle - 0.2f) * bob) * 5.0f, 1.0f, 0.0f, 0.0f);
 
     // Apply tilt (for damage effects)
-    glRotatef(tiltVal, 0.0f, 0.0f, 1.0f);
+    MatrixStack::modelview().rotate(tiltVal, 0.0f, 0.0f, 1.0f);
 }
 
 void GameRenderer::setupFog() {
-    // Calculate fog color based on time of day (matching Java Dimension.getFogColor)
+    // Calculate fog color based on time of day
     if (minecraft && minecraft->level) {
         float timeOfDay = minecraft->level->getTimeOfDay();
         float brightness = std::cos(timeOfDay * 3.14159265f * 2.0f) * 2.0f + 0.5f;
         brightness = std::max(0.0f, std::min(1.0f, brightness));
 
-        // Java fog base color: (0.7529412, 0.84705883, 1.0)
-        // Multiplied by (brightness * 0.94 + 0.06) for R/G, (brightness * 0.91 + 0.09) for B
         fogRed = 0.7529412f * (brightness * 0.94f + 0.06f);
         fogGreen = 0.84705883f * (brightness * 0.94f + 0.06f);
         fogBlue = 1.0f * (brightness * 0.91f + 0.09f);
@@ -148,13 +141,8 @@ void GameRenderer::setupFog() {
     fogStart = 20.0f * distMultiplier;
     fogEnd = 80.0f * distMultiplier;
 
-    glEnable(GL_FOG);
-    glFogi(GL_FOG_MODE, GL_LINEAR);
-
-    float fogColor[] = {fogRed, fogGreen, fogBlue, 1.0f};
-    glFogfv(GL_FOG_COLOR, fogColor);
-    glFogf(GL_FOG_START, fogStart);
-    glFogf(GL_FOG_END, fogEnd);
+    // Update shader fog uniforms
+    ShaderManager::getInstance().updateFog(fogStart, fogEnd, fogRed, fogGreen, fogBlue);
 }
 
 void GameRenderer::pick(float partialTick) {
@@ -166,11 +154,7 @@ void GameRenderer::pick(float partialTick) {
         return;
     }
 
-    // Get player view
-    Vec3 eyePos = player->getEyePosition();
     Vec3 look = player->getLookVector();
-
-    // Ray length
     float reach = 5.0f;
 
     Vec3 start(
@@ -180,7 +164,6 @@ void GameRenderer::pick(float partialTick) {
     );
     Vec3 end = start.add(look.x * reach, look.y * reach, look.z * reach);
 
-    // Raycast
     hitResult = level->clip(start, end);
 }
 
@@ -202,27 +185,31 @@ void GameRenderer::renderWorld(float partialTick) {
     // Bind terrain texture
     Textures::getInstance().bind("resources/terrain.png");
 
-    // Enable required states for legacy fixed-function pipeline
-    glEnable(GL_TEXTURE_2D);
+    // Enable required states
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
 
-    // Disable lighting - we use vertex colors directly
-    glDisable(GL_LIGHTING);
+    // Use world shader with fog and alpha test
+    ShaderManager::getInstance().useWorldShader();
+    ShaderManager::getInstance().setAlphaTest(0.5f);
+    ShaderManager::getInstance().updateMatrices();
 
-    // Enable alpha test for transparent textures
-    glEnable(GL_ALPHA_TEST);
-    glAlphaFunc(GL_GREATER, 0.5f);
-
-    // Set default color to white (vertex colors will override)
-    glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+    // Set sky brightness for dynamic terrain lighting (varies with time of day)
+    float skyBrightness = 1.0f;
+    if (minecraft->level) {
+        skyBrightness = minecraft->level->getSkyBrightness();
+    }
+    ShaderManager::getInstance().setSkyBrightness(skyBrightness);
 
     // Render sky
     levelRenderer->renderSky(partialTick);
 
-    // Re-bind terrain texture after sky rendering (sky binds sun/moon textures)
+    // Re-bind terrain texture after sky rendering
     Textures::getInstance().bind("resources/terrain.png");
+    ShaderManager::getInstance().useWorldShader();
+    ShaderManager::getInstance().updateMatrices();
+    ShaderManager::getInstance().setSkyBrightness(skyBrightness);  // Re-set after shader switch
 
     // Render opaque geometry
     levelRenderer->render(partialTick, 0);
@@ -241,7 +228,8 @@ void GameRenderer::renderWorld(float partialTick) {
     }
 
     // Render transparent geometry (water)
-    glDisable(GL_ALPHA_TEST);
+    ShaderManager::getInstance().setAlphaTest(0.0f);
+    ShaderManager::getInstance().setSkyBrightness(skyBrightness);  // Ensure sky brightness is set
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     levelRenderer->render(partialTick, 1);
@@ -257,12 +245,10 @@ void GameRenderer::renderWorld(float partialTick) {
 void GameRenderer::renderBreakingAnimation(float progress) {
     if (!hitResult.isTile()) return;
 
-    // Calculate break texture index (240-249 in terrain.png)
     int breakStage = static_cast<int>(progress * 10.0f);
     if (breakStage > 9) breakStage = 9;
     int textureIndex = 240 + breakStage;
 
-    // Calculate UV coordinates for break texture in terrain.png (16x16 grid)
     float texU = static_cast<float>(textureIndex % 16) / 16.0f;
     float texV = static_cast<float>(textureIndex / 16) / 16.0f;
     float texSize = 1.0f / 16.0f;
@@ -271,126 +257,104 @@ void GameRenderer::renderBreakingAnimation(float progress) {
     float y = static_cast<float>(hitResult.y);
     float z = static_cast<float>(hitResult.z);
 
-    // Slightly expand the crack overlay to prevent z-fighting
     float e = 0.002f;
 
-    // Setup for rendering crack overlay (matching Java)
     Textures::getInstance().bind("resources/terrain.png");
     glEnable(GL_BLEND);
-    glBlendFunc(GL_DST_COLOR, GL_SRC_COLOR);  // Multiplicative blending
-    glDisable(GL_ALPHA_TEST);
-    glDisable(GL_CULL_FACE);  // Render both sides
-    glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-    glDepthMask(GL_FALSE);  // Don't write to depth buffer
+    glBlendFunc(GL_DST_COLOR, GL_SRC_COLOR);
+    glDisable(GL_CULL_FACE);
+    glDepthMask(GL_FALSE);
 
-    // Use polygon offset to prevent z-fighting
     glPolygonOffset(-3.0f, -3.0f);
     glEnable(GL_POLYGON_OFFSET_FILL);
 
-    glBegin(GL_QUADS);
+    ShaderManager::getInstance().useWorldShader();
+    ShaderManager::getInstance().setAlphaTest(0.0f);
+    ShaderManager::getInstance().updateMatrices();
 
-    // Bottom face (y = y) - render outward (visible from below)
-    glTexCoord2f(texU, texV + texSize);
-    glVertex3f(x - e, y - e, z + 1 + e);
-    glTexCoord2f(texU + texSize, texV + texSize);
-    glVertex3f(x + 1 + e, y - e, z + 1 + e);
-    glTexCoord2f(texU + texSize, texV);
-    glVertex3f(x + 1 + e, y - e, z - e);
-    glTexCoord2f(texU, texV);
-    glVertex3f(x - e, y - e, z - e);
+    Tesselator& t = Tesselator::getInstance();
 
-    // Top face (y = y + 1) - render outward (visible from above)
-    glTexCoord2f(texU, texV);
-    glVertex3f(x - e, y + 1 + e, z - e);
-    glTexCoord2f(texU + texSize, texV);
-    glVertex3f(x + 1 + e, y + 1 + e, z - e);
-    glTexCoord2f(texU + texSize, texV + texSize);
-    glVertex3f(x + 1 + e, y + 1 + e, z + 1 + e);
-    glTexCoord2f(texU, texV + texSize);
-    glVertex3f(x - e, y + 1 + e, z + 1 + e);
+    // Bottom face
+    t.begin(GL_QUADS);
+    t.color(1.0f, 1.0f, 1.0f, 1.0f);
+    t.tex(texU, texV + texSize); t.vertex(x - e, y - e, z + 1 + e);
+    t.tex(texU + texSize, texV + texSize); t.vertex(x + 1 + e, y - e, z + 1 + e);
+    t.tex(texU + texSize, texV); t.vertex(x + 1 + e, y - e, z - e);
+    t.tex(texU, texV); t.vertex(x - e, y - e, z - e);
+    t.end();
 
-    // North face (z = z) - visible from north
-    glTexCoord2f(texU + texSize, texV);
-    glVertex3f(x - e, y + 1 + e, z - e);
-    glTexCoord2f(texU, texV);
-    glVertex3f(x + 1 + e, y + 1 + e, z - e);
-    glTexCoord2f(texU, texV + texSize);
-    glVertex3f(x + 1 + e, y - e, z - e);
-    glTexCoord2f(texU + texSize, texV + texSize);
-    glVertex3f(x - e, y - e, z - e);
+    // Top face
+    t.begin(GL_QUADS);
+    t.color(1.0f, 1.0f, 1.0f, 1.0f);
+    t.tex(texU, texV); t.vertex(x - e, y + 1 + e, z - e);
+    t.tex(texU + texSize, texV); t.vertex(x + 1 + e, y + 1 + e, z - e);
+    t.tex(texU + texSize, texV + texSize); t.vertex(x + 1 + e, y + 1 + e, z + 1 + e);
+    t.tex(texU, texV + texSize); t.vertex(x - e, y + 1 + e, z + 1 + e);
+    t.end();
 
-    // South face (z = z + 1) - visible from south
-    glTexCoord2f(texU, texV);
-    glVertex3f(x - e, y + 1 + e, z + 1 + e);
-    glTexCoord2f(texU, texV + texSize);
-    glVertex3f(x - e, y - e, z + 1 + e);
-    glTexCoord2f(texU + texSize, texV + texSize);
-    glVertex3f(x + 1 + e, y - e, z + 1 + e);
-    glTexCoord2f(texU + texSize, texV);
-    glVertex3f(x + 1 + e, y + 1 + e, z + 1 + e);
+    // North face
+    t.begin(GL_QUADS);
+    t.color(1.0f, 1.0f, 1.0f, 1.0f);
+    t.tex(texU + texSize, texV); t.vertex(x - e, y + 1 + e, z - e);
+    t.tex(texU, texV); t.vertex(x + 1 + e, y + 1 + e, z - e);
+    t.tex(texU, texV + texSize); t.vertex(x + 1 + e, y - e, z - e);
+    t.tex(texU + texSize, texV + texSize); t.vertex(x - e, y - e, z - e);
+    t.end();
 
-    // West face (x = x) - visible from west
-    glTexCoord2f(texU + texSize, texV);
-    glVertex3f(x - e, y + 1 + e, z + 1 + e);
-    glTexCoord2f(texU, texV);
-    glVertex3f(x - e, y + 1 + e, z - e);
-    glTexCoord2f(texU, texV + texSize);
-    glVertex3f(x - e, y - e, z - e);
-    glTexCoord2f(texU + texSize, texV + texSize);
-    glVertex3f(x - e, y - e, z + 1 + e);
+    // South face
+    t.begin(GL_QUADS);
+    t.color(1.0f, 1.0f, 1.0f, 1.0f);
+    t.tex(texU, texV); t.vertex(x - e, y + 1 + e, z + 1 + e);
+    t.tex(texU, texV + texSize); t.vertex(x - e, y - e, z + 1 + e);
+    t.tex(texU + texSize, texV + texSize); t.vertex(x + 1 + e, y - e, z + 1 + e);
+    t.tex(texU + texSize, texV); t.vertex(x + 1 + e, y + 1 + e, z + 1 + e);
+    t.end();
 
-    // East face (x = x + 1) - visible from east
-    glTexCoord2f(texU, texV);
-    glVertex3f(x + 1 + e, y + 1 + e, z - e);
-    glTexCoord2f(texU + texSize, texV);
-    glVertex3f(x + 1 + e, y + 1 + e, z + 1 + e);
-    glTexCoord2f(texU + texSize, texV + texSize);
-    glVertex3f(x + 1 + e, y - e, z + 1 + e);
-    glTexCoord2f(texU, texV + texSize);
-    glVertex3f(x + 1 + e, y - e, z - e);
+    // West face
+    t.begin(GL_QUADS);
+    t.color(1.0f, 1.0f, 1.0f, 1.0f);
+    t.tex(texU + texSize, texV); t.vertex(x - e, y + 1 + e, z + 1 + e);
+    t.tex(texU, texV); t.vertex(x - e, y + 1 + e, z - e);
+    t.tex(texU, texV + texSize); t.vertex(x - e, y - e, z - e);
+    t.tex(texU + texSize, texV + texSize); t.vertex(x - e, y - e, z + 1 + e);
+    t.end();
 
-    glEnd();
+    // East face
+    t.begin(GL_QUADS);
+    t.color(1.0f, 1.0f, 1.0f, 1.0f);
+    t.tex(texU, texV); t.vertex(x + 1 + e, y + 1 + e, z - e);
+    t.tex(texU + texSize, texV); t.vertex(x + 1 + e, y + 1 + e, z + 1 + e);
+    t.tex(texU + texSize, texV + texSize); t.vertex(x + 1 + e, y - e, z + 1 + e);
+    t.tex(texU, texV + texSize); t.vertex(x + 1 + e, y - e, z - e);
+    t.end();
 
     glPolygonOffset(0.0f, 0.0f);
     glDisable(GL_POLYGON_OFFSET_FILL);
     glDepthMask(GL_TRUE);
     glEnable(GL_CULL_FACE);
     glDisable(GL_BLEND);
-    glEnable(GL_ALPHA_TEST);
-    glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+    ShaderManager::getInstance().setAlphaTest(0.5f);
 }
 
 void GameRenderer::renderHitOutline() {
     if (!hitResult.isTile()) return;
 
-    // Forcefully disable all client states that might interfere
-    glDisableClientState(GL_VERTEX_ARRAY);
-    glDisableClientState(GL_COLOR_ARRAY);
-    glDisableClientState(GL_TEXTURE_COORD_ARRAY);
-    glDisableClientState(GL_NORMAL_ARRAY);
+    // Use line shader for selection outline
+    ShaderManager::getInstance().useLineShader();
+    ShaderManager::getInstance().updateMatrices();
 
-    // GL state setup (matching Java)
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glDisable(GL_TEXTURE_2D);
-    glDisable(GL_LIGHTING);
-    glDisable(GL_ALPHA_TEST);  // Disable alpha test so low alpha values aren't discarded
-    glDepthMask(GL_FALSE);  // Don't write to depth buffer
-    glDepthRange(0.0, 0.9999);  // Slight bias toward camera
+    glDepthMask(GL_FALSE);
+    glDepthRange(0.0, 0.9999);
     glLineWidth(2.0f);
 
-    // Black, 40% alpha (matching Java)
-    glColor4f(0.0f, 0.0f, 0.0f, 0.4f);
-
-    // Get block coordinates
     int bx = hitResult.x;
     int by = hitResult.y;
     int bz = hitResult.z;
 
-    // Expansion to prevent z-fighting (Java uses 0.002F)
     float ss = 0.002f;
 
-    // Get the tile's AABB and expand it
     float x0 = static_cast<float>(bx) - ss;
     float y0 = static_cast<float>(by) - ss;
     float z0 = static_cast<float>(bz) - ss;
@@ -398,47 +362,51 @@ void GameRenderer::renderHitOutline() {
     float y1 = static_cast<float>(by) + 1.0f + ss;
     float z1 = static_cast<float>(bz) + 1.0f + ss;
 
-    // Draw with immediate mode
+    Tesselator& t = Tesselator::getInstance();
+
     // Bottom face
-    glBegin(GL_LINE_STRIP);
-    glVertex3f(x0, y0, z0);
-    glVertex3f(x1, y0, z0);
-    glVertex3f(x1, y0, z1);
-    glVertex3f(x0, y0, z1);
-    glVertex3f(x0, y0, z0);
-    glEnd();
+    t.begin(GL_LINE_STRIP);
+    t.color(0.0f, 0.0f, 0.0f, 0.4f);
+    t.vertex(x0, y0, z0);
+    t.vertex(x1, y0, z0);
+    t.vertex(x1, y0, z1);
+    t.vertex(x0, y0, z1);
+    t.vertex(x0, y0, z0);
+    t.end();
 
     // Top face
-    glBegin(GL_LINE_STRIP);
-    glVertex3f(x0, y1, z0);
-    glVertex3f(x1, y1, z0);
-    glVertex3f(x1, y1, z1);
-    glVertex3f(x0, y1, z1);
-    glVertex3f(x0, y1, z0);
-    glEnd();
+    t.begin(GL_LINE_STRIP);
+    t.color(0.0f, 0.0f, 0.0f, 0.4f);
+    t.vertex(x0, y1, z0);
+    t.vertex(x1, y1, z0);
+    t.vertex(x1, y1, z1);
+    t.vertex(x0, y1, z1);
+    t.vertex(x0, y1, z0);
+    t.end();
 
     // Vertical edges
-    glBegin(GL_LINES);
-    glVertex3f(x0, y0, z0);
-    glVertex3f(x0, y1, z0);
-    glVertex3f(x1, y0, z0);
-    glVertex3f(x1, y1, z0);
-    glVertex3f(x1, y0, z1);
-    glVertex3f(x1, y1, z1);
-    glVertex3f(x0, y0, z1);
-    glVertex3f(x0, y1, z1);
-    glEnd();
+    t.begin(GL_LINES);
+    t.color(0.0f, 0.0f, 0.0f, 0.4f);
+    t.vertex(x0, y0, z0);
+    t.vertex(x0, y1, z0);
+    t.vertex(x1, y0, z0);
+    t.vertex(x1, y1, z0);
+    t.vertex(x1, y0, z1);
+    t.vertex(x1, y1, z1);
+    t.vertex(x0, y0, z1);
+    t.vertex(x0, y1, z1);
+    t.end();
 
-    // Restore state
     glDepthRange(0.0, 1.0);
     glDepthMask(GL_TRUE);
-    glEnable(GL_TEXTURE_2D);
-    glEnable(GL_ALPHA_TEST);
     glDisable(GL_BLEND);
+
+    // Switch back to world shader
+    ShaderManager::getInstance().useWorldShader();
+    ShaderManager::getInstance().updateMatrices();
 }
 
 void GameRenderer::tick() {
-    // Matching Java ItemInHandRenderer.tick() exactly
     this->oHeight = this->height;
 
     LocalPlayer* player = minecraft->player;
@@ -446,17 +414,13 @@ void GameRenderer::tick() {
 
     ItemStack selected = player->inventory->getSelected();
 
-    // Java: boolean matches = this.lastSlot == player.inventory.selected && selected == this.selectedItem;
     bool matches = (this->lastSlot == player->inventory->selected) &&
                    (selected.id == this->selectedItem.id && selected.damage == this->selectedItem.damage);
 
-    // Java: if (this.selectedItem == null && selected == null) { matches = true; }
     if (this->selectedItem.isEmpty() && selected.isEmpty()) {
         matches = true;
     }
 
-    // Java: if (selected != null && this.selectedItem != null && selected != this.selectedItem && selected.id == this.selectedItem.id)
-    // If different stack but same item ID, update reference and consider it a match
     if (!selected.isEmpty() && !this->selectedItem.isEmpty() &&
         !(selected.id == this->selectedItem.id && selected.damage == this->selectedItem.damage && selected.count == this->selectedItem.count) &&
         selected.id == this->selectedItem.id) {
@@ -464,29 +428,15 @@ void GameRenderer::tick() {
         matches = true;
     }
 
-    // Java: float max = 0.4F;
     float max = 0.4f;
-
-    // Java: float tHeight = (float)(matches ? 1 : 0);
     float tHeight = matches ? 1.0f : 0.0f;
-
-    // Java: float dd = tHeight - this.height;
     float dd = tHeight - this->height;
 
-    // Java: if (dd < -max) { dd = -max; }
-    if (dd < -max) {
-        dd = -max;
-    }
+    if (dd < -max) dd = -max;
+    if (dd > max) dd = max;
 
-    // Java: if (dd > max) { dd = max; }
-    if (dd > max) {
-        dd = max;
-    }
-
-    // Java: this.height += dd;
     this->height += dd;
 
-    // Java: if (this.height < 0.1F) { this.selectedItem = selected; this.lastSlot = player.inventory.selected; }
     if (this->height < 0.1f) {
         this->selectedItem = selected;
         this->lastSlot = player->inventory->selected;
@@ -494,7 +444,6 @@ void GameRenderer::tick() {
 }
 
 void GameRenderer::itemPlaced() {
-    // Java ItemInHandRenderer.itemPlaced(): this.height = 0.0F
     this->height = 0.0f;
 }
 
@@ -502,91 +451,35 @@ void GameRenderer::renderHand(float partialTick) {
     LocalPlayer* player = minecraft->player;
     if (!player || !player->inventory) return;
 
-    // Java: float h = this.oHeight + (this.height - this.oHeight) * a;
     float h = this->oHeight + (this->height - this->oHeight) * partialTick;
-
-    // Java: ItemInstance item = this.selectedItem;
     ItemStack item = this->selectedItem;
 
-    // Clear depth buffer so hand renders in front of everything (matching Java)
     glClear(GL_DEPTH_BUFFER_BIT);
 
-    // Reset modelview matrix to render in screen space (matching Java renderItemInHand)
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
+    MatrixStack::modelview().loadIdentity();
 
-    // Apply view bobbing (matching Java GameRenderer.bobView exactly)
+    // Apply view bobbing
     if (minecraft->options.viewBobbing) {
-        // Interpolate walk distance for phase (oscillation)
         float walkDistDelta = player->walkDist - player->oWalkDist;
         float walkDistInterp = player->oWalkDist + walkDistDelta * partialTick;
-
-        // Interpolate bob amount for amplitude
         float bobAmount = player->getBobbing(partialTick);
-
-        // Interpolate tilt
         float tiltAmount = player->getTilt(partialTick);
 
-        // Apply bobbing transforms (matching Java exactly)
-        glTranslatef(
+        MatrixStack::modelview().translate(
             Mth::sin(walkDistInterp * Mth::PI) * bobAmount * 0.5f,
             -std::abs(Mth::cos(walkDistInterp * Mth::PI) * bobAmount),
             0.0f
         );
-        glRotatef(Mth::sin(walkDistInterp * Mth::PI) * bobAmount * 3.0f, 0.0f, 0.0f, 1.0f);
-        glRotatef(std::abs(Mth::cos(walkDistInterp * Mth::PI + 0.2f) * bobAmount) * 5.0f, 1.0f, 0.0f, 0.0f);
-        glRotatef(tiltAmount, 1.0f, 0.0f, 0.0f);
+        MatrixStack::modelview().rotate(Mth::sin(walkDistInterp * Mth::PI) * bobAmount * 3.0f, 0.0f, 0.0f, 1.0f);
+        MatrixStack::modelview().rotate(std::abs(Mth::cos(walkDistInterp * Mth::PI + 0.2f) * bobAmount) * 5.0f, 1.0f, 0.0f, 0.0f);
+        MatrixStack::modelview().rotate(tiltAmount, 1.0f, 0.0f, 0.0f);
     }
 
-    // Setup lighting FIRST with camera rotation (matching Java ItemInHandRenderer.render lines 135-139)
-    // Java: glPushMatrix -> rotate by player view -> Lighting.turnOn() -> glPopMatrix
-    glPushMatrix();
-    glRotatef(player->getInterpolatedXRot(partialTick), 1.0f, 0.0f, 0.0f);
-    glRotatef(player->getInterpolatedYRot(partialTick), 0.0f, 1.0f, 0.0f);  // NO +180 here!
+    // Use world shader for hand rendering
+    ShaderManager::getInstance().useWorldShader();
+    ShaderManager::getInstance().setAlphaTest(0.1f);
 
-    // Lighting.turnOn() - matching Java exactly
-    glEnable(GL_LIGHTING);
-    glEnable(GL_LIGHT0);
-    glEnable(GL_LIGHT1);
-    glEnable(GL_COLOR_MATERIAL);
-    glColorMaterial(GL_FRONT, GL_AMBIENT_AND_DIFFUSE);
-
-    float ambient = 0.4f;
-    float diffuse = 0.6f;
-    float specular = 0.0f;
-
-    // Light 0: direction (0.2, 1.0, -0.7) normalized
-    float len0 = std::sqrt(0.2f*0.2f + 1.0f*1.0f + 0.7f*0.7f);
-    float light0Pos[] = {0.2f/len0, 1.0f/len0, -0.7f/len0, 0.0f};
-    float light0Diffuse[] = {diffuse, diffuse, diffuse, 1.0f};
-    float light0Ambient[] = {0.0f, 0.0f, 0.0f, 1.0f};
-    float light0Specular[] = {specular, specular, specular, 1.0f};
-
-    glLightfv(GL_LIGHT0, GL_POSITION, light0Pos);
-    glLightfv(GL_LIGHT0, GL_DIFFUSE, light0Diffuse);
-    glLightfv(GL_LIGHT0, GL_AMBIENT, light0Ambient);
-    glLightfv(GL_LIGHT0, GL_SPECULAR, light0Specular);
-
-    // Light 1: direction (-0.2, 1.0, 0.7) normalized
-    float len1 = std::sqrt(0.2f*0.2f + 1.0f*1.0f + 0.7f*0.7f);
-    float light1Pos[] = {-0.2f/len1, 1.0f/len1, 0.7f/len1, 0.0f};
-    float light1Diffuse[] = {diffuse, diffuse, diffuse, 1.0f};
-    float light1Ambient[] = {0.0f, 0.0f, 0.0f, 1.0f};
-    float light1Specular[] = {specular, specular, specular, 1.0f};
-
-    glLightfv(GL_LIGHT1, GL_POSITION, light1Pos);
-    glLightfv(GL_LIGHT1, GL_DIFFUSE, light1Diffuse);
-    glLightfv(GL_LIGHT1, GL_AMBIENT, light1Ambient);
-    glLightfv(GL_LIGHT1, GL_SPECULAR, light1Specular);
-
-    // Global ambient and shade model
-    float globalAmbient[] = {ambient, ambient, ambient, 1.0f};
-    glLightModelfv(GL_LIGHT_MODEL_AMBIENT, globalAmbient);
-    glShadeModel(GL_FLAT);
-
-    glPopMatrix();
-
-    // Get brightness at player position AFTER lighting setup (matching Java line 140-141)
+    // Get brightness at player position
     float br = 1.0f;
     if (minecraft->level) {
         br = minecraft->level->getBrightness(
@@ -595,145 +488,143 @@ void GameRenderer::renderHand(float partialTick) {
             Mth::floor(player->z)
         );
     }
-    glColor4f(br, br, br, 1.0f);
 
-    // Check if holding an item (Java: if (item != null))
+    // Setup lighting for hand/item (matching Java Lighting.turnOn)
+    // Light directions in world space (from Java)
+    float len0 = std::sqrt(0.2f*0.2f + 1.0f*1.0f + 0.7f*0.7f);
+    float len1 = std::sqrt(0.2f*0.2f + 1.0f*1.0f + 0.7f*0.7f);
+    glm::vec3 worldLight0(0.2f/len0, 1.0f/len0, -0.7f/len0);
+    glm::vec3 worldLight1(-0.2f/len1, 1.0f/len1, 0.7f/len1);
+
+    // Build camera rotation matrix to transform lights to view space
+    float pitch = player->getInterpolatedXRot(partialTick);
+    float yaw = player->getInterpolatedYRot(partialTick) + 180.0f;
+
+    glm::mat4 cameraRot(1.0f);
+    cameraRot = glm::rotate(cameraRot, glm::radians(pitch), glm::vec3(1.0f, 0.0f, 0.0f));
+    cameraRot = glm::rotate(cameraRot, glm::radians(yaw), glm::vec3(0.0f, 1.0f, 0.0f));
+    glm::mat3 rotMat = glm::mat3(cameraRot);
+
+    // Transform light directions to view space
+    glm::vec3 viewLight0 = rotMat * worldLight0;
+    glm::vec3 viewLight1 = rotMat * worldLight1;
+
+    // Enable lighting and set parameters
+    ShaderManager::getInstance().enableLighting(true);
+    ShaderManager::getInstance().setLightDirections(
+        viewLight0.x, viewLight0.y, viewLight0.z,
+        viewLight1.x, viewLight1.y, viewLight1.z
+    );
+    ShaderManager::getInstance().setLightParams(0.4f, 0.6f);  // ambient=0.4, diffuse=0.6 (from Java)
+    ShaderManager::getInstance().setBrightness(br);  // World brightness at player position
+
     if (!item.isEmpty()) {
-        // Render held item (matching Java ItemInHandRenderer.render with item)
-        glPushMatrix();
+        // Render held item
+        MatrixStack::modelview().push();
 
         float d = 0.8f;
         float swing = player->getAttackAnim(partialTick);
         float swing1 = Mth::sin(swing * Mth::PI);
         float swing2 = Mth::sin(Mth::sqrt(swing) * Mth::PI);
 
-        // Swing offset for items (Java line 153)
-        glTranslatef(
+        MatrixStack::modelview().translate(
             -swing2 * 0.4f,
             Mth::sin(Mth::sqrt(swing) * Mth::PI * 2.0f) * 0.2f,
             -swing1 * 0.2f
         );
 
-        // Base position for items (Java line 154)
-        glTranslatef(0.7f * d, -0.65f * d - (1.0f - h) * 0.6f, -0.9f * d);
-        glRotatef(45.0f, 0.0f, 1.0f, 0.0f);
-        glEnable(GL_RESCALE_NORMAL);
+        MatrixStack::modelview().translate(0.7f * d, -0.65f * d - (1.0f - h) * 0.6f, -0.9f * d);
+        MatrixStack::modelview().rotate(45.0f, 0.0f, 1.0f, 0.0f);
 
-        // Swing rotations (Java lines 157-162)
         swing = player->getAttackAnim(partialTick);
         swing1 = Mth::sin(swing * swing * Mth::PI);
         swing2 = Mth::sin(Mth::sqrt(swing) * Mth::PI);
-        glRotatef(-swing1 * 20.0f, 0.0f, 1.0f, 0.0f);
-        glRotatef(-swing2 * 20.0f, 0.0f, 0.0f, 1.0f);
-        glRotatef(-swing2 * 80.0f, 1.0f, 0.0f, 0.0f);
+        MatrixStack::modelview().rotate(-swing1 * 20.0f, 0.0f, 1.0f, 0.0f);
+        MatrixStack::modelview().rotate(-swing2 * 20.0f, 0.0f, 0.0f, 1.0f);
+        MatrixStack::modelview().rotate(-swing2 * 80.0f, 1.0f, 0.0f, 0.0f);
 
-        // Scale (Java line 164)
         float s = 0.4f;
-        glScalef(s, s, s);
+        MatrixStack::modelview().scale(s, s, s);
 
-        // Check if item should be mirrored
         Item* itemPtr = item.getItem();
         if (itemPtr && itemPtr->isMirroredArt()) {
-            glRotatef(180.0f, 0.0f, 1.0f, 0.0f);
+            MatrixStack::modelview().rotate(180.0f, 0.0f, 1.0f, 0.0f);
         }
 
-        // Render the item
+        ShaderManager::getInstance().updateMatrices();
+        ShaderManager::getInstance().updateNormalMatrix();
         renderItem(item);
 
-        glDisable(GL_RESCALE_NORMAL);
-        glPopMatrix();
+        MatrixStack::modelview().pop();
     } else {
         // Render empty hand (arm only)
-        glPushMatrix();
+        MatrixStack::modelview().push();
 
         float swing = player->getAttackAnim(partialTick);
         float swing1 = Mth::sin(swing * Mth::PI);
         float swing2 = Mth::sin(Mth::sqrt(swing) * Mth::PI);
 
-        // Swing offset for arm (Java line 177)
-        glTranslatef(
+        MatrixStack::modelview().translate(
             -swing2 * 0.3f,
             Mth::sin(Mth::sqrt(swing) * Mth::PI * 2.0f) * 0.4f,
             -swing1 * 0.4f
         );
 
-        // Base arm position (Java line 178)
         float d = 0.8f;
-        glTranslatef(0.8f * d, -0.75f * d - (1.0f - h) * 0.6f, -0.9f * d);
-        glRotatef(45.0f, 0.0f, 1.0f, 0.0f);
-        glEnable(GL_RESCALE_NORMAL);
+        MatrixStack::modelview().translate(0.8f * d, -0.75f * d - (1.0f - h) * 0.6f, -0.9f * d);
+        MatrixStack::modelview().rotate(45.0f, 0.0f, 1.0f, 0.0f);
 
-        // Swing rotations (Java lines 181-185)
         swing = player->getAttackAnim(partialTick);
         swing1 = Mth::sin(swing * swing * Mth::PI);
         swing2 = Mth::sin(Mth::sqrt(swing) * Mth::PI);
-        glRotatef(swing2 * 70.0f, 0.0f, 1.0f, 0.0f);
-        glRotatef(-swing1 * 20.0f, 0.0f, 0.0f, 1.0f);
+        MatrixStack::modelview().rotate(swing2 * 70.0f, 0.0f, 1.0f, 0.0f);
+        MatrixStack::modelview().rotate(-swing1 * 20.0f, 0.0f, 0.0f, 1.0f);
 
-        // Bind player skin texture
         Textures::getInstance().bind("resources/mob/char.png");
 
-        // Final transformations (Java lines 187-192)
-        glTranslatef(-1.0f, 3.6f, 3.5f);
-        glRotatef(120.0f, 0.0f, 0.0f, 1.0f);
-        glRotatef(200.0f, 1.0f, 0.0f, 0.0f);
-        glRotatef(-135.0f, 0.0f, 1.0f, 0.0f);
-        glScalef(1.0f, 1.0f, 1.0f);
-        glTranslatef(5.6f, 0.0f, 0.0f);
+        MatrixStack::modelview().translate(-1.0f, 3.6f, 3.5f);
+        MatrixStack::modelview().rotate(120.0f, 0.0f, 0.0f, 1.0f);
+        MatrixStack::modelview().rotate(200.0f, 1.0f, 0.0f, 0.0f);
+        MatrixStack::modelview().rotate(-135.0f, 0.0f, 1.0f, 0.0f);
+        MatrixStack::modelview().scale(1.0f, 1.0f, 1.0f);
+        MatrixStack::modelview().translate(5.6f, 0.0f, 0.0f);
 
+        ShaderManager::getInstance().updateMatrices();
+        ShaderManager::getInstance().updateNormalMatrix();
         renderArmModel(0.0625f);
 
-        glDisable(GL_RESCALE_NORMAL);
-        glPopMatrix();
+        MatrixStack::modelview().pop();
     }
 
-    // Disable lighting
-    glDisable(GL_LIGHTING);
-    glDisable(GL_LIGHT0);
-    glDisable(GL_LIGHT1);
-    glDisable(GL_COLOR_MATERIAL);
+    // Disable lighting after hand rendering
+    ShaderManager::getInstance().enableLighting(false);
 }
 
 void GameRenderer::renderArmModel(float scale) {
-    // Render arm0 from HumanoidModel: Cube(40, 16) with addBox(-3, -2, -2, 4, 12, 4)
-    // arm0.setPos(-5.0F, 2.0F, 0.0F) - position relative to body
-
-    // Apply arm position translation (matching Java Cube.render)
-    // The Cube.render() method translates by (x * scale, y * scale, z * scale)
     float armX = -5.0f;
     float armY = 2.0f;
     float armZ = 0.0f;
-    glTranslatef(armX * scale, armY * scale, armZ * scale);
+    MatrixStack::modelview().translate(armX * scale, armY * scale, armZ * scale);
+    ShaderManager::getInstance().updateMatrices();
 
-    // Box dimensions from addBox(-3, -2, -2, 4, 12, 4)
     float x0 = -3.0f, y0 = -2.0f, z0 = -2.0f;
-    float x1 = x0 + 4.0f;  // = 1.0f
-    float y1 = y0 + 12.0f; // = 10.0f
-    float z1 = z0 + 4.0f;  // = 2.0f
+    float x1 = x0 + 4.0f;
+    float y1 = y0 + 12.0f;
+    float z1 = z0 + 4.0f;
 
-    // Apply scale
     x0 *= scale; y0 *= scale; z0 *= scale;
     x1 *= scale; y1 *= scale; z1 *= scale;
-
-    // Texture coordinates for arm (texture offset 40, 16)
-    // Player texture is 64x32
-    // UV layout for a box with dimensions (w=4, h=12, d=4):
-    // - d=4, w=4, h=12
-    // - Each face has specific UV regions in the texture
 
     int texU = 40;
     int texV = 16;
     int w = 4, h = 12, d = 4;
 
-    // Calculate UV coordinates for each face (normalized to 64x32 texture)
-    // Small inset to prevent texture bleeding
-    float us = 0.001f;  // u seam fix
-    float vs = 0.002f;  // v seam fix
+    float us = 0.001f;
+    float vs = 0.002f;
 
     Tesselator& t = Tesselator::getInstance();
 
-    // Right face (+X): polygon[0] - vertices l1, u1, u2, l2
-    // UV: (d+w, d) to (d+w+d, d+h) = (8, 4) to (12, 16) offset by (40, 16)
+    // Right face (+X)
     {
         float u0 = (texU + d + w) / 64.0f + us;
         float v0 = (texV + d) / 32.0f + vs;
@@ -741,6 +632,7 @@ void GameRenderer::renderArmModel(float scale) {
         float v1 = (texV + d + h) / 32.0f - vs;
 
         t.begin(GL_QUADS);
+        t.color(1.0f, 1.0f, 1.0f, 1.0f);
         t.normal(1.0f, 0.0f, 0.0f);
         t.tex(u1, v0); t.vertex(x1, y0, z1);
         t.tex(u0, v0); t.vertex(x1, y0, z0);
@@ -749,8 +641,7 @@ void GameRenderer::renderArmModel(float scale) {
         t.end();
     }
 
-    // Left face (-X): polygon[1] - vertices u0, l0, l3, u3
-    // UV: (0, d) to (d, d+h) = (0, 4) to (4, 16) offset by (40, 16)
+    // Left face (-X)
     {
         float u0 = (texU + 0) / 64.0f + us;
         float v0 = (texV + d) / 32.0f + vs;
@@ -758,6 +649,7 @@ void GameRenderer::renderArmModel(float scale) {
         float v1 = (texV + d + h) / 32.0f - vs;
 
         t.begin(GL_QUADS);
+        t.color(1.0f, 1.0f, 1.0f, 1.0f);
         t.normal(-1.0f, 0.0f, 0.0f);
         t.tex(u1, v0); t.vertex(x0, y0, z0);
         t.tex(u0, v0); t.vertex(x0, y0, z1);
@@ -766,8 +658,7 @@ void GameRenderer::renderArmModel(float scale) {
         t.end();
     }
 
-    // Top face (-Y in model space, but rendered as top): polygon[2] - vertices l1, l0, u0, u1
-    // UV: (d, 0) to (d+w, d) = (4, 0) to (8, 4) offset by (40, 16)
+    // Top face (-Y)
     {
         float u0 = (texU + d) / 64.0f + us;
         float v0 = (texV + 0) / 32.0f + vs;
@@ -775,6 +666,7 @@ void GameRenderer::renderArmModel(float scale) {
         float v1 = (texV + d) / 32.0f - vs;
 
         t.begin(GL_QUADS);
+        t.color(1.0f, 1.0f, 1.0f, 1.0f);
         t.normal(0.0f, -1.0f, 0.0f);
         t.tex(u1, v0); t.vertex(x1, y0, z1);
         t.tex(u0, v0); t.vertex(x0, y0, z1);
@@ -783,8 +675,7 @@ void GameRenderer::renderArmModel(float scale) {
         t.end();
     }
 
-    // Bottom face (+Y): polygon[3] - vertices u2, u3, l3, l2
-    // UV: (d+w, 0) to (d+w+w, d) = (8, 0) to (12, 4) offset by (40, 16)
+    // Bottom face (+Y)
     {
         float u0 = (texU + d + w) / 64.0f + us;
         float v0 = (texV + 0) / 32.0f + vs;
@@ -792,6 +683,7 @@ void GameRenderer::renderArmModel(float scale) {
         float v1 = (texV + d) / 32.0f - vs;
 
         t.begin(GL_QUADS);
+        t.color(1.0f, 1.0f, 1.0f, 1.0f);
         t.normal(0.0f, 1.0f, 0.0f);
         t.tex(u0, v0); t.vertex(x1, y1, z0);
         t.tex(u1, v0); t.vertex(x0, y1, z0);
@@ -800,8 +692,7 @@ void GameRenderer::renderArmModel(float scale) {
         t.end();
     }
 
-    // Front face (-Z): polygon[4] - vertices u1, u0, u3, u2
-    // UV: (d, d) to (d+w, d+h) = (4, 4) to (8, 16) offset by (40, 16)
+    // Front face (-Z)
     {
         float u0 = (texU + d) / 64.0f + us;
         float v0 = (texV + d) / 32.0f + vs;
@@ -809,6 +700,7 @@ void GameRenderer::renderArmModel(float scale) {
         float v1 = (texV + d + h) / 32.0f - vs;
 
         t.begin(GL_QUADS);
+        t.color(1.0f, 1.0f, 1.0f, 1.0f);
         t.normal(0.0f, 0.0f, -1.0f);
         t.tex(u1, v0); t.vertex(x1, y0, z0);
         t.tex(u0, v0); t.vertex(x0, y0, z0);
@@ -817,8 +709,7 @@ void GameRenderer::renderArmModel(float scale) {
         t.end();
     }
 
-    // Back face (+Z): polygon[5] - vertices l0, l1, l2, l3
-    // UV: (d+w+d, d) to (d+w+d+w, d+h) = (12, 4) to (16, 16) offset by (40, 16)
+    // Back face (+Z)
     {
         float u0 = (texU + d + w + d) / 64.0f + us;
         float v0 = (texV + d) / 32.0f + vs;
@@ -826,6 +717,7 @@ void GameRenderer::renderArmModel(float scale) {
         float v1 = (texV + d + h) / 32.0f - vs;
 
         t.begin(GL_QUADS);
+        t.color(1.0f, 1.0f, 1.0f, 1.0f);
         t.normal(0.0f, 0.0f, 1.0f);
         t.tex(u0, v0); t.vertex(x0, y0, z1);
         t.tex(u1, v0); t.vertex(x1, y0, z1);
@@ -836,47 +728,43 @@ void GameRenderer::renderArmModel(float scale) {
 }
 
 void GameRenderer::renderItem(const ItemStack& item) {
-    // Render held item matching Java ItemInHandRenderer.renderItem()
-    glPushMatrix();
+    MatrixStack::modelview().push();
 
-    // Enable alpha test for transparent pixels
-    glEnable(GL_ALPHA_TEST);
-    glAlphaFunc(GL_GREATER, 0.1f);
+    ShaderManager::getInstance().setAlphaTest(0.1f);
 
     if (item.isBlock()) {
-        // Render block
         Tile* tile = item.getTile();
         if (tile && TileRenderer::canRender(static_cast<int>(tile->renderShape))) {
-            // Bind terrain texture and render 3D block
             Textures::getInstance().bind("resources/terrain.png");
+            ShaderManager::getInstance().updateMatrices();
+            ShaderManager::getInstance().updateNormalMatrix();
             tileRenderer.renderTileForGUI(tile, item.getAuxValue());
         } else {
-            // Non-cube block - render as flat sprite from terrain.png
             Textures::getInstance().bind("resources/terrain.png");
-            // Fall through to sprite rendering below
             int icon = item.getIcon();
             float u0 = (static_cast<float>(icon % 16 * 16) + 0.0f) / 256.0f;
             float u1 = (static_cast<float>(icon % 16 * 16) + 15.99f) / 256.0f;
             float v0 = (static_cast<float>(icon / 16 * 16) + 0.0f) / 256.0f;
             float v1 = (static_cast<float>(icon / 16 * 16) + 15.99f) / 256.0f;
 
-            // Render flat sprite with depth (matching Java ItemInHandRenderer lines 40-126)
             float r = 1.0f;
             float xo = 0.0f;
             float yo = 0.3f;
-            glEnable(GL_RESCALE_NORMAL);
-            glTranslatef(-xo, -yo, 0.0f);
+            MatrixStack::modelview().translate(-xo, -yo, 0.0f);
             float s = 1.5f;
-            glScalef(s, s, s);
-            glRotatef(50.0f, 0.0f, 1.0f, 0.0f);
-            glRotatef(335.0f, 0.0f, 0.0f, 1.0f);
-            glTranslatef(-0.9375f, -0.0625f, 0.0f);
+            MatrixStack::modelview().scale(s, s, s);
+            MatrixStack::modelview().rotate(50.0f, 0.0f, 1.0f, 0.0f);
+            MatrixStack::modelview().rotate(335.0f, 0.0f, 0.0f, 1.0f);
+            MatrixStack::modelview().translate(-0.9375f, -0.0625f, 0.0f);
+            ShaderManager::getInstance().updateMatrices();
+            ShaderManager::getInstance().updateNormalMatrix();
 
             float dd = 0.0625f;
             Tesselator& t = Tesselator::getInstance();
 
             // Front face
             t.begin(GL_QUADS);
+            t.color(1.0f, 1.0f, 1.0f, 1.0f);
             t.normal(0.0f, 0.0f, 1.0f);
             t.tex(u1, v1); t.vertex(0.0f, 0.0f, 0.0f);
             t.tex(u0, v1); t.vertex(r, 0.0f, 0.0f);
@@ -886,6 +774,7 @@ void GameRenderer::renderItem(const ItemStack& item) {
 
             // Back face
             t.begin(GL_QUADS);
+            t.color(1.0f, 1.0f, 1.0f, 1.0f);
             t.normal(0.0f, 0.0f, -1.0f);
             t.tex(u1, v0); t.vertex(0.0f, 1.0f, -dd);
             t.tex(u0, v0); t.vertex(r, 1.0f, -dd);
@@ -893,14 +782,14 @@ void GameRenderer::renderItem(const ItemStack& item) {
             t.tex(u1, v1); t.vertex(0.0f, 0.0f, -dd);
             t.end();
 
-            // Side strips for thickness (16 strips per side)
+            // Side strips for thickness
             for (int i = 0; i < 16; ++i) {
                 float p = static_cast<float>(i) / 16.0f;
                 float uu = u1 + (u0 - u1) * p - 0.001953125f;
                 float xx = r * p;
 
-                // Left edge
                 t.begin(GL_QUADS);
+                t.color(1.0f, 1.0f, 1.0f, 1.0f);
                 t.normal(-1.0f, 0.0f, 0.0f);
                 t.tex(uu, v1); t.vertex(xx, 0.0f, -dd);
                 t.tex(uu, v1); t.vertex(xx, 0.0f, 0.0f);
@@ -914,8 +803,8 @@ void GameRenderer::renderItem(const ItemStack& item) {
                 float uu = u1 + (u0 - u1) * p - 0.001953125f;
                 float xx = r * p + 0.0625f;
 
-                // Right edge
                 t.begin(GL_QUADS);
+                t.color(1.0f, 1.0f, 1.0f, 1.0f);
                 t.normal(1.0f, 0.0f, 0.0f);
                 t.tex(uu, v0); t.vertex(xx, 1.0f, -dd);
                 t.tex(uu, v0); t.vertex(xx, 1.0f, 0.0f);
@@ -929,8 +818,8 @@ void GameRenderer::renderItem(const ItemStack& item) {
                 float vv = v1 + (v0 - v1) * p - 0.001953125f;
                 float yy = r * p + 0.0625f;
 
-                // Top edge
                 t.begin(GL_QUADS);
+                t.color(1.0f, 1.0f, 1.0f, 1.0f);
                 t.normal(0.0f, 1.0f, 0.0f);
                 t.tex(u1, vv); t.vertex(0.0f, yy, 0.0f);
                 t.tex(u0, vv); t.vertex(r, yy, 0.0f);
@@ -944,8 +833,8 @@ void GameRenderer::renderItem(const ItemStack& item) {
                 float vv = v1 + (v0 - v1) * p - 0.001953125f;
                 float yy = r * p;
 
-                // Bottom edge
                 t.begin(GL_QUADS);
+                t.color(1.0f, 1.0f, 1.0f, 1.0f);
                 t.normal(0.0f, -1.0f, 0.0f);
                 t.tex(u0, vv); t.vertex(r, yy, 0.0f);
                 t.tex(u1, vv); t.vertex(0.0f, yy, 0.0f);
@@ -953,12 +842,9 @@ void GameRenderer::renderItem(const ItemStack& item) {
                 t.tex(u0, vv); t.vertex(r, yy, -dd);
                 t.end();
             }
-
-            glDisable(GL_RESCALE_NORMAL);
         }
     } else {
-        // Render item sprite (flat with thickness)
-        // Bind items.png for items (id >= 256)
+        // Render item sprite
         Textures::getInstance().bind("resources/gui/items.png");
 
         int icon = item.getIcon();
@@ -970,19 +856,21 @@ void GameRenderer::renderItem(const ItemStack& item) {
         float r = 1.0f;
         float xo = 0.0f;
         float yo = 0.3f;
-        glEnable(GL_RESCALE_NORMAL);
-        glTranslatef(-xo, -yo, 0.0f);
+        MatrixStack::modelview().translate(-xo, -yo, 0.0f);
         float s = 1.5f;
-        glScalef(s, s, s);
-        glRotatef(50.0f, 0.0f, 1.0f, 0.0f);
-        glRotatef(335.0f, 0.0f, 0.0f, 1.0f);
-        glTranslatef(-0.9375f, -0.0625f, 0.0f);
+        MatrixStack::modelview().scale(s, s, s);
+        MatrixStack::modelview().rotate(50.0f, 0.0f, 1.0f, 0.0f);
+        MatrixStack::modelview().rotate(335.0f, 0.0f, 0.0f, 1.0f);
+        MatrixStack::modelview().translate(-0.9375f, -0.0625f, 0.0f);
+        ShaderManager::getInstance().updateMatrices();
+        ShaderManager::getInstance().updateNormalMatrix();
 
         float dd = 0.0625f;
         Tesselator& t = Tesselator::getInstance();
 
         // Front face
         t.begin(GL_QUADS);
+        t.color(1.0f, 1.0f, 1.0f, 1.0f);
         t.normal(0.0f, 0.0f, 1.0f);
         t.tex(u1, v1); t.vertex(0.0f, 0.0f, 0.0f);
         t.tex(u0, v1); t.vertex(r, 0.0f, 0.0f);
@@ -992,6 +880,7 @@ void GameRenderer::renderItem(const ItemStack& item) {
 
         // Back face
         t.begin(GL_QUADS);
+        t.color(1.0f, 1.0f, 1.0f, 1.0f);
         t.normal(0.0f, 0.0f, -1.0f);
         t.tex(u1, v0); t.vertex(0.0f, 1.0f, -dd);
         t.tex(u0, v0); t.vertex(r, 1.0f, -dd);
@@ -999,13 +888,14 @@ void GameRenderer::renderItem(const ItemStack& item) {
         t.tex(u1, v1); t.vertex(0.0f, 0.0f, -dd);
         t.end();
 
-        // Side strips for thickness
+        // Side strips
         for (int i = 0; i < 16; ++i) {
             float p = static_cast<float>(i) / 16.0f;
             float uu = u1 + (u0 - u1) * p - 0.001953125f;
             float xx = r * p;
 
             t.begin(GL_QUADS);
+            t.color(1.0f, 1.0f, 1.0f, 1.0f);
             t.normal(-1.0f, 0.0f, 0.0f);
             t.tex(uu, v1); t.vertex(xx, 0.0f, -dd);
             t.tex(uu, v1); t.vertex(xx, 0.0f, 0.0f);
@@ -1020,6 +910,7 @@ void GameRenderer::renderItem(const ItemStack& item) {
             float xx = r * p + 0.0625f;
 
             t.begin(GL_QUADS);
+            t.color(1.0f, 1.0f, 1.0f, 1.0f);
             t.normal(1.0f, 0.0f, 0.0f);
             t.tex(uu, v0); t.vertex(xx, 1.0f, -dd);
             t.tex(uu, v0); t.vertex(xx, 1.0f, 0.0f);
@@ -1034,6 +925,7 @@ void GameRenderer::renderItem(const ItemStack& item) {
             float yy = r * p + 0.0625f;
 
             t.begin(GL_QUADS);
+            t.color(1.0f, 1.0f, 1.0f, 1.0f);
             t.normal(0.0f, 1.0f, 0.0f);
             t.tex(u1, vv); t.vertex(0.0f, yy, 0.0f);
             t.tex(u0, vv); t.vertex(r, yy, 0.0f);
@@ -1048,6 +940,7 @@ void GameRenderer::renderItem(const ItemStack& item) {
             float yy = r * p;
 
             t.begin(GL_QUADS);
+            t.color(1.0f, 1.0f, 1.0f, 1.0f);
             t.normal(0.0f, -1.0f, 0.0f);
             t.tex(u0, vv); t.vertex(r, yy, 0.0f);
             t.tex(u1, vv); t.vertex(0.0f, yy, 0.0f);
@@ -1055,36 +948,32 @@ void GameRenderer::renderItem(const ItemStack& item) {
             t.tex(u0, vv); t.vertex(r, yy, -dd);
             t.end();
         }
-
-        glDisable(GL_RESCALE_NORMAL);
     }
 
-    glPopMatrix();
+    MatrixStack::modelview().pop();
 }
 
 void GameRenderer::renderGui(float /*partialTick*/) {
     // Switch to orthographic projection for 2D GUI
-    glMatrixMode(GL_PROJECTION);
-    glPushMatrix();
-    glLoadIdentity();
-    glOrtho(0, screenWidth, screenHeight, 0, -1, 1);
+    MatrixStack::projection().push();
+    MatrixStack::projection().loadIdentity();
+    MatrixStack::projection().ortho(0.0f, static_cast<float>(screenWidth), static_cast<float>(screenHeight), 0.0f, -1.0f, 1.0f);
 
-    glMatrixMode(GL_MODELVIEW);
-    glPushMatrix();
-    glLoadIdentity();
+    MatrixStack::modelview().push();
+    MatrixStack::modelview().loadIdentity();
 
     glDisable(GL_DEPTH_TEST);
-    glDisable(GL_LIGHTING);
+
+    ShaderManager::getInstance().useGuiShader();
+    ShaderManager::getInstance().updateMatrices();
 
     // GUI elements rendered via Gui class
 
     glEnable(GL_DEPTH_TEST);
 
     // Restore matrices
-    glMatrixMode(GL_PROJECTION);
-    glPopMatrix();
-    glMatrixMode(GL_MODELVIEW);
-    glPopMatrix();
+    MatrixStack::projection().pop();
+    MatrixStack::modelview().pop();
 }
 
 void GameRenderer::setCameraPosition(double /*x*/, double /*y*/, double /*z*/) {

@@ -1,12 +1,12 @@
 #include "gui/Font.hpp"
 #include "renderer/Textures.hpp"
 #include "renderer/Tesselator.hpp"
+#include "renderer/MatrixStack.hpp"
+#include "renderer/ShaderManager.hpp"
 #include <stb_image.h>
 
 namespace mc {
 
-// Character mapping - same as font.txt (starts at texture index 32)
-// Index 0 = space (texture pos 32), index 1 = '!' (texture pos 33), etc.
 const std::string Font::acceptableLetters =
     " !\"#$%&'()*+,-./"
     "0123456789:;<=>?"
@@ -19,22 +19,16 @@ Font::Font()
     : fontTexture(0)
     , initialized(false)
 {
-    // Initialize all widths to 0
     for (int i = 0; i < 256; i++) {
         charWidths[i] = 0;
     }
 }
 
 void Font::calculateCharWidths(const unsigned char* pixels, int width, int height) {
-    // Calculate character widths by scanning the font image
-    // This matches Java's Font constructor exactly
-    // Font texture is 128x128 with 16x16 grid of 8x8 characters
-
     for (int i = 0; i < 256; ++i) {
-        int xt = i % 16;  // Column in character grid
-        int yt = i / 16;  // Row in character grid
+        int xt = i % 16;
+        int yt = i / 16;
 
-        // Scan from right to left to find rightmost non-empty column
         int x;
         for (x = 7; x >= 0; --x) {
             int xPixel = xt * 8 + x;
@@ -42,9 +36,7 @@ void Font::calculateCharWidths(const unsigned char* pixels, int width, int heigh
 
             for (int y = 0; y < 8 && emptyColumn; ++y) {
                 int yPixel = (yt * 8 + y) * width;
-                // Get alpha channel (RGBA format, alpha is 4th byte)
-                // Or if grayscale, just get the pixel value
-                int pixelIndex = (xPixel + yPixel) * 4 + 3;  // Alpha channel
+                int pixelIndex = (xPixel + yPixel) * 4 + 3;
                 if (pixelIndex < width * height * 4) {
                     int pixel = pixels[pixelIndex];
                     if (pixel > 0) {
@@ -58,12 +50,10 @@ void Font::calculateCharWidths(const unsigned char* pixels, int width, int heigh
             }
         }
 
-        // Space character (index 32) gets special width
         if (i == 32) {
             x = 2;
         }
 
-        // Width = rightmost column + 2 (for spacing)
         charWidths[i] = x + 2;
     }
 }
@@ -71,7 +61,6 @@ void Font::calculateCharWidths(const unsigned char* pixels, int width, int heigh
 void Font::init() {
     if (initialized) return;
 
-    // Load font image to calculate character widths
     int width, height, channels;
     unsigned char* pixels = stbi_load("resources/font/default.png", &width, &height, &channels, 4);
 
@@ -79,11 +68,10 @@ void Font::init() {
         calculateCharWidths(pixels, width, height);
         stbi_image_free(pixels);
     } else {
-        // Fallback: set default widths if image load fails
         for (int i = 0; i < 256; i++) {
             charWidths[i] = 6;
         }
-        charWidths[32] = 4;  // Space
+        charWidths[32] = 4;
     }
 
     fontTexture = Textures::getInstance().loadTexture("resources/font/default.png");
@@ -101,7 +89,6 @@ void Font::draw(const std::string& text, int x, int y, int color) {
 void Font::draw(const std::string& text, int x, int y, int color, bool darken) {
     if (!initialized || text.empty()) return;
 
-    // Apply darkening for shadow (matches Java: (color & 0xFCFCFC) >> 2)
     if (darken) {
         int oldAlpha = color & 0xFF000000;
         color = (color & 0xFCFCFC) >> 2;
@@ -110,7 +97,6 @@ void Font::draw(const std::string& text, int x, int y, int color, bool darken) {
 
     Textures::getInstance().bind(fontTexture);
 
-    glEnable(GL_TEXTURE_2D);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
@@ -120,44 +106,44 @@ void Font::draw(const std::string& text, int x, int y, int color, bool darken) {
     float a = ((color >> 24) & 0xFF) / 255.0f;
     if (a == 0) a = 1.0f;
 
-    glColor4f(r, g, b, a);
+    ShaderManager::getInstance().useGuiShader();
+    ShaderManager::getInstance().setUseTexture(true);
 
-    glPushMatrix();
-    glTranslatef(static_cast<float>(x), static_cast<float>(y), 0.0f);
+    MatrixStack::modelview().push();
+    MatrixStack::modelview().translate(static_cast<float>(x), static_cast<float>(y), 0.0f);
+    ShaderManager::getInstance().updateMatrices();
+
+    float xOffset = 0.0f;
+    int currentY = y;
 
     for (size_t i = 0; i < text.length(); ++i) {
         char c = text[i];
 
-        // Handle newlines
         if (c == '\n') {
-            glPopMatrix();
-            y += charHeight + 1;
-            glPushMatrix();
-            glTranslatef(static_cast<float>(x), static_cast<float>(y), 0.0f);
+            xOffset = 0.0f;
+            currentY += charHeight + 1;
+            MatrixStack::modelview().pop();
+            MatrixStack::modelview().push();
+            MatrixStack::modelview().translate(static_cast<float>(x), static_cast<float>(currentY), 0.0f);
+            ShaderManager::getInstance().updateMatrices();
             continue;
         }
 
-        // Find character index in acceptableLetters
         size_t charPos = acceptableLetters.find(c);
         if (charPos != std::string::npos) {
-            // Texture index = position in acceptableLetters + 32
             int textureIndex = static_cast<int>(charPos) + 32;
-            drawChar(textureIndex, 0, 0);
-            // Advance by character width
-            glTranslatef(static_cast<float>(charWidths[textureIndex]), 0.0f, 0.0f);
+            drawChar(textureIndex, xOffset, 0, r, g, b, a);
+            xOffset += static_cast<float>(charWidths[textureIndex]);
         }
     }
 
-    glPopMatrix();
+    MatrixStack::modelview().pop();
 
-    glColor4f(1, 1, 1, 1);
     glDisable(GL_BLEND);
 }
 
 void Font::drawShadow(const std::string& text, int x, int y, int color) {
-    // Draw shadow first (offset by 1, darkened)
     draw(text, x + 1, y + 1, color, true);
-    // Draw main text
     draw(text, x, y, color, false);
 }
 
@@ -181,7 +167,6 @@ int Font::getWidth(const std::string& text) const {
             continue;
         }
 
-        // Find character index in acceptableLetters
         size_t charPos = acceptableLetters.find(c);
         if (charPos != std::string::npos) {
             int textureIndex = static_cast<int>(charPos) + 32;
@@ -193,11 +178,13 @@ int Font::getWidth(const std::string& text) const {
 }
 
 void Font::drawChar(int charIndex, float x, float y) {
-    // Font texture is 128x128 pixels with 16x16 grid of 8x8 characters
-    int ix = (charIndex % 16) * 8;  // Pixel X position in texture
-    int iy = (charIndex / 16) * 8;  // Pixel Y position in texture
+    drawChar(charIndex, x, y, 1.0f, 1.0f, 1.0f, 1.0f);
+}
 
-    // Java uses 7.99F to avoid texture bleeding
+void Font::drawChar(int charIndex, float x, float y, float r, float g, float b, float a) {
+    int ix = (charIndex % 16) * 8;
+    int iy = (charIndex / 16) * 8;
+
     float s = 7.99f;
 
     float u0 = static_cast<float>(ix) / 128.0f;
@@ -205,13 +192,14 @@ void Font::drawChar(int charIndex, float x, float y) {
     float u1 = (static_cast<float>(ix) + s) / 128.0f;
     float v1 = (static_cast<float>(iy) + s) / 128.0f;
 
-    // Match Java's vertex order exactly (using Tesselator pattern)
-    glBegin(GL_QUADS);
-    glTexCoord2f(u0, v1); glVertex2f(x, y + s);          // bottom-left
-    glTexCoord2f(u1, v1); glVertex2f(x + s, y + s);      // bottom-right
-    glTexCoord2f(u1, v0); glVertex2f(x + s, y);          // top-right
-    glTexCoord2f(u0, v0); glVertex2f(x, y);              // top-left
-    glEnd();
+    Tesselator& t = Tesselator::getInstance();
+    t.begin(GL_QUADS);
+    t.color(r, g, b, a);
+    t.tex(u0, v1); t.vertex(x, y + s, 0.0f);
+    t.tex(u1, v1); t.vertex(x + s, y + s, 0.0f);
+    t.tex(u1, v0); t.vertex(x + s, y, 0.0f);
+    t.tex(u0, v0); t.vertex(x, y, 0.0f);
+    t.end();
 }
 
 } // namespace mc

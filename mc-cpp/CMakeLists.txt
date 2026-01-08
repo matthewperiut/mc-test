@@ -10,9 +10,10 @@ find_package(OpenGL REQUIRED)
 find_package(glfw3 3.3 REQUIRED)
 find_package(GLEW REQUIRED)
 find_package(OpenAL REQUIRED)
+find_package(glm REQUIRED)
 
 # Find stb_image for texture loading (header-only)
-# We'll include it in our source
+# We'll include it in our sourc1e
 
 # Source files
 set(UTIL_SOURCES
@@ -42,6 +43,8 @@ set(RENDERER_SOURCES
     src/renderer/GameRenderer.cpp
     src/renderer/Frustum.cpp
     src/renderer/ShaderProgram.cpp
+    src/renderer/MatrixStack.cpp
+    src/renderer/ShaderManager.cpp
 )
 
 set(WORLD_SOURCES
@@ -120,6 +123,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     glfw
     GLEW::GLEW
     ${OPENAL_LIBRARY}
+    glm::glm
 )
 
 # Copy resources to build directory

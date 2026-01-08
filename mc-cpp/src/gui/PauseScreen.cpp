@@ -2,6 +2,8 @@
 #include "gui/OptionsScreen.hpp"
 #include "core/Minecraft.hpp"
 #include "audio/SoundEngine.hpp"
+#include "renderer/MatrixStack.hpp"
+#include "renderer/ShaderManager.hpp"
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 
@@ -24,16 +26,12 @@ void PauseScreen::initButtons() {
     int centerX = width / 2;
     int centerY = height / 4;
 
-    // Match Java layout exactly:
-    // Back to Game at height/4 + 24
     buttons.push_back(std::make_unique<Button>(
         BUTTON_BACK, centerX - 100, centerY + 24, 200, 20, "Back to Game"));
 
-    // Save and quit to title at height/4 + 48
     buttons.push_back(std::make_unique<Button>(
         BUTTON_QUIT, centerX - 100, centerY + 48, 200, 20, "Save and quit to title"));
 
-    // Options at height/4 + 96
     buttons.push_back(std::make_unique<Button>(
         BUTTON_OPTIONS, centerX - 100, centerY + 96, 200, 20, "Options..."));
 }
@@ -42,26 +40,24 @@ void PauseScreen::render(int mx, int my, float partialTick) {
     mouseX = mx;
     mouseY = my;
 
-    // Set up 2D orthographic projection
-    glMatrixMode(GL_PROJECTION);
-    glPushMatrix();
-    glLoadIdentity();
-    glOrtho(0, width, height, 0, 1000.0, 3000.0);
+    // Set up 2D orthographic projection using MatrixStack
+    MatrixStack::projection().push();
+    MatrixStack::projection().loadIdentity();
+    MatrixStack::projection().ortho(0, static_cast<float>(width), static_cast<float>(height), 0, 1000.0f, 3000.0f);
 
-    glMatrixMode(GL_MODELVIEW);
-    glPushMatrix();
-    glLoadIdentity();
-    glTranslatef(0.0f, 0.0f, -2000.0f);
+    MatrixStack::modelview().push();
+    MatrixStack::modelview().loadIdentity();
+    MatrixStack::modelview().translate(0.0f, 0.0f, -2000.0f);
 
     // Set up 2D rendering state
     glDisable(GL_DEPTH_TEST);
-    glDisable(GL_LIGHTING);
     glDisable(GL_CULL_FACE);
-    glDisable(GL_FOG);
-    glEnable(GL_TEXTURE_2D);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+
+    ShaderManager::getInstance().useGuiShader();
+    ShaderManager::getInstance().updateMatrices();
+    ShaderManager::getInstance().setUseTexture(true);
 
     // Draw semi-transparent background
     fillGradient(0, 0, width, height, 0xC0101010, 0xD0101010);
@@ -75,10 +71,8 @@ void PauseScreen::render(int mx, int my, float partialTick) {
     }
 
     // Restore projection
-    glMatrixMode(GL_PROJECTION);
-    glPopMatrix();
-    glMatrixMode(GL_MODELVIEW);
-    glPopMatrix();
+    MatrixStack::projection().pop();
+    MatrixStack::modelview().pop();
 
     // Restore 3D state
     glEnable(GL_DEPTH_TEST);
@@ -91,7 +85,6 @@ void PauseScreen::keyPressed(int key, int scancode, int action, int mods) {
 
     if (action == GLFW_PRESS) {
         if (key == GLFW_KEY_ESCAPE) {
-            // Return to game
             minecraft->closeScreen();
         }
     }
@@ -101,7 +94,6 @@ void PauseScreen::mouseClicked(int button, int action) {
     if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
         for (auto& btn : buttons) {
             if (btn->active && btn->isMouseOver(mouseX, mouseY)) {
-                // Play click sound (matching Java playUI: volume * 0.25)
                 SoundEngine::getInstance().playSound("random.click", 0.25f, 1.0f);
                 buttonClicked(btn->id);
                 break;

@@ -1,6 +1,8 @@
 #include "gui/Button.hpp"
 #include "gui/Font.hpp"
 #include "renderer/Textures.hpp"
+#include "renderer/Tesselator.hpp"
+#include "renderer/ShaderManager.hpp"
 #include <GL/glew.h>
 
 namespace mc {
@@ -32,64 +34,70 @@ void Button::render(Font* font, int mouseX, int mouseY) {
 
     hovered = isMouseOver(mouseX, mouseY);
 
-    // Bind gui texture for button background
     Textures::getInstance().bind("resources/gui/gui.png");
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    // Java uses full white color - no tinting
-    glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+    ShaderManager::getInstance().useGuiShader();
+    ShaderManager::getInstance().updateMatrices();
+    ShaderManager::getInstance().setUseTexture(true);
 
-    // Get button texture Y offset based on state (matching Java getYImage)
-    // yImage: 0 = disabled, 1 = normal, 2 = hovered
-    // Texture Y position: 46 + yImage * 20
-    int yImage = 1;  // Normal
+    int yImage = 1;
     if (!active) {
-        yImage = 0;  // Disabled
+        yImage = 0;
     } else if (hovered) {
-        yImage = 2;  // Hovered
+        yImage = 2;
     }
 
     float texScale = 1.0f / 256.0f;
     int texY = 46 + yImage * 20;
     int halfWidth = width / 2;
 
-    // Draw button using two halves (matching Java blit calls)
-    // Left half: blit(x, y, 0, 46 + yImage * 20, w/2, h)
-    glBegin(GL_QUADS);
-    glTexCoord2f(0.0f, (float)texY * texScale);
-    glVertex2f((float)x, (float)y);
-    glTexCoord2f((float)halfWidth * texScale, (float)texY * texScale);
-    glVertex2f((float)(x + halfWidth), (float)y);
-    glTexCoord2f((float)halfWidth * texScale, (float)(texY + height) * texScale);
-    glVertex2f((float)(x + halfWidth), (float)(y + height));
-    glTexCoord2f(0.0f, (float)(texY + height) * texScale);
-    glVertex2f((float)x, (float)(y + height));
+    Tesselator& t = Tesselator::getInstance();
 
-    // Right half: blit(x + w/2, y, 200 - w/2, 46 + yImage * 20, w/2, h)
+    // Draw button using two halves
+    t.begin(GL_QUADS);
+    t.color(1.0f, 1.0f, 1.0f, 1.0f);
+
+    // Left half
+    t.tex(0.0f, static_cast<float>(texY) * texScale);
+    t.vertex(static_cast<float>(x), static_cast<float>(y), 0.0f);
+
+    t.tex(static_cast<float>(halfWidth) * texScale, static_cast<float>(texY) * texScale);
+    t.vertex(static_cast<float>(x + halfWidth), static_cast<float>(y), 0.0f);
+
+    t.tex(static_cast<float>(halfWidth) * texScale, static_cast<float>(texY + height) * texScale);
+    t.vertex(static_cast<float>(x + halfWidth), static_cast<float>(y + height), 0.0f);
+
+    t.tex(0.0f, static_cast<float>(texY + height) * texScale);
+    t.vertex(static_cast<float>(x), static_cast<float>(y + height), 0.0f);
+
+    // Right half
     int texX2 = 200 - halfWidth;
-    glTexCoord2f((float)texX2 * texScale, (float)texY * texScale);
-    glVertex2f((float)(x + halfWidth), (float)y);
-    glTexCoord2f(200.0f * texScale, (float)texY * texScale);
-    glVertex2f((float)(x + width), (float)y);
-    glTexCoord2f(200.0f * texScale, (float)(texY + height) * texScale);
-    glVertex2f((float)(x + width), (float)(y + height));
-    glTexCoord2f((float)texX2 * texScale, (float)(texY + height) * texScale);
-    glVertex2f((float)(x + halfWidth), (float)(y + height));
-    glEnd();
+    t.tex(static_cast<float>(texX2) * texScale, static_cast<float>(texY) * texScale);
+    t.vertex(static_cast<float>(x + halfWidth), static_cast<float>(y), 0.0f);
+
+    t.tex(200.0f * texScale, static_cast<float>(texY) * texScale);
+    t.vertex(static_cast<float>(x + width), static_cast<float>(y), 0.0f);
+
+    t.tex(200.0f * texScale, static_cast<float>(texY + height) * texScale);
+    t.vertex(static_cast<float>(x + width), static_cast<float>(y + height), 0.0f);
+
+    t.tex(static_cast<float>(texX2) * texScale, static_cast<float>(texY + height) * texScale);
+    t.vertex(static_cast<float>(x + halfWidth), static_cast<float>(y + height), 0.0f);
+
+    t.end();
 
     glDisable(GL_BLEND);
 
-    // Draw button text centered (matching Java colors)
-    // Disabled: -6250336 = 0xFFA0A0A0, Hovered: 16777120 = 0xFFFFA0, Normal: 14737632 = 0xE0E0E0
     int textColor;
     if (!active) {
-        textColor = 0xA0A0A0;  // Gray for disabled
+        textColor = 0xA0A0A0;
     } else if (hovered) {
-        textColor = 0xFFFFA0;  // Yellow for hovered
+        textColor = 0xFFFFA0;
     } else {
-        textColor = 0xE0E0E0;  // Light gray for normal
+        textColor = 0xE0E0E0;
     }
 
     int textX = x + (width - font->getWidth(message)) / 2;
@@ -98,7 +106,6 @@ void Button::render(Font* font, int mouseX, int mouseY) {
 }
 
 void Button::onClick() {
-    // Override in subclasses or handle via callback
 }
 
 } // namespace mc

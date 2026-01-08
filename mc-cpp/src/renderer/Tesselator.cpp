@@ -2,7 +2,6 @@
 #include <cstring>
 #include <stdexcept>
 #include <iostream>
-#include <bit>
 
 namespace mc {
 
@@ -19,22 +18,30 @@ Tesselator& Tesselator::getInstance() {
 }
 
 Tesselator::Tesselator()
-    : p(0)
+    : vao(0)
+    , vbo(0)
+    , ebo(0)
+    , vaoInitialized(false)
+    , p(0)
     , vertices(0)
     , count(0)
     , u(0), v(0)
     , col(0xFFFFFFFF)
     , normalValue(0)
+    , lightValue(0x0F0F)  // Default: max sky light (15), max block light (15)
     , xo(0), yo(0), zo(0)
     , hasColor(false)
     , hasTexture(false)
     , hasNormal(false)
+    , hasLight(false)
     , noColorFlag(false)
     , tesselating(false)
     , mode(GL_QUADS)
 {
     // Pre-allocate array (2097152 ints like Java)
     array.resize(2097152);
+    // Pre-allocate index buffer for worst case (6 indices per 4 vertices)
+    indices.reserve(MAX_VERTICES * 6 / 4);
 }
 
 Tesselator::~Tesselator() {
@@ -42,11 +49,55 @@ Tesselator::~Tesselator() {
 }
 
 void Tesselator::init() {
-    // Nothing needed for client-side arrays
+    if (vaoInitialized) return;
+
+    glGenVertexArrays(1, &vao);
+    glGenBuffers(1, &vbo);
+    glGenBuffers(1, &ebo);
+
+    setupVAO();
+    vaoInitialized = true;
+}
+
+void Tesselator::setupVAO() {
+    glBindVertexArray(vao);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+
+    // Position attribute (location 0) - 3 floats at offset 0
+    glVertexAttribPointer(ATTRIB_POSITION, 3, GL_FLOAT, GL_FALSE, 32, (void*)0);
+    glEnableVertexAttribArray(ATTRIB_POSITION);
+
+    // TexCoord attribute (location 1) - 2 floats at offset 12
+    glVertexAttribPointer(ATTRIB_TEXCOORD, 2, GL_FLOAT, GL_FALSE, 32, (void*)12);
+    glEnableVertexAttribArray(ATTRIB_TEXCOORD);
+
+    // Color attribute (location 2) - 4 unsigned bytes normalized at offset 20
+    glVertexAttribPointer(ATTRIB_COLOR, 4, GL_UNSIGNED_BYTE, GL_TRUE, 32, (void*)20);
+    glEnableVertexAttribArray(ATTRIB_COLOR);
+
+    // Normal attribute (location 3) - 3 signed bytes normalized at offset 24
+    glVertexAttribPointer(ATTRIB_NORMAL, 3, GL_BYTE, GL_TRUE, 32, (void*)24);
+    glEnableVertexAttribArray(ATTRIB_NORMAL);
+
+    // Light attribute (location 4) - 2 unsigned bytes at offset 28 (skyLight, blockLight)
+    glVertexAttribPointer(ATTRIB_LIGHT, 2, GL_UNSIGNED_BYTE, GL_FALSE, 32, (void*)28);
+    glEnableVertexAttribArray(ATTRIB_LIGHT);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+
+    glBindVertexArray(0);
 }
 
 void Tesselator::destroy() {
+    if (vaoInitialized) {
+        glDeleteVertexArrays(1, &vao);
+        glDeleteBuffers(1, &vbo);
+        glDeleteBuffers(1, &ebo);
+        vao = vbo = ebo = 0;
+        vaoInitialized = false;
+    }
     array.clear();
+    indices.clear();
 }
 
 void Tesselator::begin(GLenum drawMode) {
@@ -59,7 +110,9 @@ void Tesselator::begin(GLenum drawMode) {
     hasNormal = false;
     hasColor = false;
     hasTexture = false;
+    hasLight = false;
     noColorFlag = false;
+    lightValue = 0x0F0F;  // Reset to max light (15 sky, 15 block)
 }
 
 void Tesselator::end() {
@@ -75,60 +128,70 @@ void Tesselator::end() {
     clear();
 }
 
+void Tesselator::buildQuadIndices() {
+    indices.clear();
+    int numQuads = vertices / 4;
+    indices.reserve(numQuads * 6);
+
+    for (int i = 0; i < numQuads; i++) {
+        unsigned int base = i * 4;
+        // First triangle: v0, v1, v2
+        indices.push_back(base + 0);
+        indices.push_back(base + 1);
+        indices.push_back(base + 2);
+        // Second triangle: v0, v2, v3
+        indices.push_back(base + 0);
+        indices.push_back(base + 2);
+        indices.push_back(base + 3);
+    }
+}
+
 void Tesselator::draw() {
     if (vertices == 0) return;
-
-    // Set up texture coordinate pointer if we have texture coords
-    if (hasTexture) {
-        // Texture coords are at byte offset 12 (after 3 floats for position)
-        glTexCoordPointer(2, GL_FLOAT, 32, reinterpret_cast<const float*>(array.data()) + 3);
-        glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+    if (!vaoInitialized) {
+        init();
     }
 
-    // Set up color pointer if we have colors
-    if (hasColor) {
-        // Color is at byte offset 20
-        glColorPointer(4, GL_UNSIGNED_BYTE, 32, reinterpret_cast<const uint8_t*>(array.data()) + 20);
-        glEnableClientState(GL_COLOR_ARRAY);
-    }
+    glBindVertexArray(vao);
 
-    // Set up normal pointer if we have normals
-    if (hasNormal) {
-        // Normal is at byte offset 24
-        glNormalPointer(GL_BYTE, 32, reinterpret_cast<const int8_t*>(array.data()) + 24);
-        glEnableClientState(GL_NORMAL_ARRAY);
-    }
+    // Upload vertex data
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, p * sizeof(int), array.data(), GL_STREAM_DRAW);
 
-    // Set up vertex pointer (position at byte offset 0)
-    glVertexPointer(3, GL_FLOAT, 32, array.data());
-    glEnableClientState(GL_VERTEX_ARRAY);
-
-    // Draw! (TRIANGLE_MODE converts GL_QUADS to GL_TRIANGLES)
-    // Temporarily disable TRIANGLE_MODE to test if it's causing cloud issues
-    static constexpr bool TRIANGLE_MODE = false;
-    if (mode == GL_QUADS && TRIANGLE_MODE) {
-        glDrawArrays(GL_TRIANGLES, 0, vertices);
+    if (mode == GL_QUADS) {
+        // Convert quads to triangles using index buffer
+        buildQuadIndices();
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int),
+                     indices.data(), GL_STREAM_DRAW);
+        glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(indices.size()), GL_UNSIGNED_INT, 0);
+    } else if (mode == GL_TRIANGLE_FAN) {
+        // Convert triangle fan to triangles
+        if (vertices >= 3) {
+            indices.clear();
+            for (int i = 1; i < vertices - 1; i++) {
+                indices.push_back(0);
+                indices.push_back(i);
+                indices.push_back(i + 1);
+            }
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int),
+                         indices.data(), GL_STREAM_DRAW);
+            glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(indices.size()), GL_UNSIGNED_INT, 0);
+        }
     } else {
+        // For GL_TRIANGLES, GL_LINES, GL_LINE_STRIP, GL_LINE_LOOP, GL_POINTS
         glDrawArrays(mode, 0, vertices);
     }
 
-    // Disable client states
-    glDisableClientState(GL_VERTEX_ARRAY);
-    if (hasTexture) {
-        glDisableClientState(GL_TEXTURE_COORD_ARRAY);
-    }
-    if (hasColor) {
-        glDisableClientState(GL_COLOR_ARRAY);
-    }
-    if (hasNormal) {
-        glDisableClientState(GL_NORMAL_ARRAY);
-    }
+    glBindVertexArray(0);
 }
 
 void Tesselator::clear() {
     vertices = 0;
     p = 0;
     count = 0;
+    indices.clear();
 }
 
 void Tesselator::tex(double u_, double v_) {
@@ -165,7 +228,6 @@ void Tesselator::color(int r, int g, int b, int a) {
     hasColor = true;
 
     // Pack color as ABGR for little-endian systems (OpenGL expects RGBA in memory)
-    // On little-endian: store as ABGR so it reads as RGBA
     col = (a << 24) | (b << 16) | (g << 8) | r;
 }
 
@@ -188,56 +250,32 @@ void Tesselator::vertexUV(double x, double y, double z, double u_, double v_) {
 void Tesselator::vertex(double x, double y, double z) {
     count++;
 
-    // TRIANGLE_MODE: Convert quads to triangles (like Java)
-    // When completing a quad (4th vertex), duplicate v0 and v2 to make two triangles
-    // Temporarily disabled to test if it's causing cloud issues
-    static constexpr bool TRIANGLE_MODE = false;
-    if (mode == GL_QUADS && TRIANGLE_MODE && count % 4 == 0) {
-        for (int i = 0; i < 2; ++i) {
-            int offs = 8 * (3 - i);  // i=0: offs=24 (v0), i=1: offs=16 (v2... wait, should be v2 at offs=8)
-            // Actually Java: i=0 gives offs=24 (3 back), i=1 gives offs=16 (2 back)
-            // After v0,v1,v2, we're at p where v3 will go
-            // v0 is at p-24, v1 is at p-16, v2 is at p-8
-            // Java copies p-24 (v0) then p-16 (v1)... but that's wrong for triangles
-            // Let me re-check: we need (v0,v1,v2) and (v0,v2,v3)
-            // So we need to duplicate v0 and v2, not v0 and v1
-            // Actually the Java code copies from p-offs BEFORE incrementing p in loop
-            // i=0: offs=8*3=24, copies from p-24 = v0
-            // i=1: offs=8*2=16, but p was incremented! so p-16 now = old_p-16+8 = old_p-8 = v2
-            // So it copies v0, then v2. Correct!
-            if (hasTexture) {
-                array[p + 3] = array[p - offs + 3];
-                array[p + 4] = array[p - offs + 4];
-            }
-            if (hasColor) {
-                array[p + 5] = array[p - offs + 5];
-            }
-            if (hasNormal) {
-                array[p + 6] = array[p - offs + 6];
-            }
-            array[p + 0] = array[p - offs + 0];
-            array[p + 1] = array[p - offs + 1];
-            array[p + 2] = array[p - offs + 2];
-            vertices++;
-            p += 8;
-        }
-    }
-
     // Store texture coords
     if (hasTexture) {
         array[p + 3] = floatToRawIntBits(static_cast<float>(u));
         array[p + 4] = floatToRawIntBits(static_cast<float>(v));
+    } else {
+        array[p + 3] = 0;
+        array[p + 4] = 0;
     }
 
     // Store color
     if (hasColor) {
         array[p + 5] = col;
+    } else {
+        array[p + 5] = 0xFFFFFFFF;  // Default white
     }
 
     // Store normal
     if (hasNormal) {
         array[p + 6] = normalValue;
+    } else {
+        array[p + 6] = 0;
     }
+
+    // Store light values (sky light in low byte, block light in next byte)
+    // Default is max light (15, 15) if not explicitly set
+    array[p + 7] = lightValue;
 
     // Store position (with offset applied)
     array[p + 0] = floatToRawIntBits(static_cast<float>(x + xo));
@@ -263,6 +301,17 @@ void Tesselator::normal(float x, float y, float z) {
     normalValue = (xx & 0xFF) | ((yy & 0xFF) << 8) | ((zz & 0xFF) << 16);
 }
 
+void Tesselator::lightLevel(int skyLight, int blockLight) {
+    hasLight = true;
+    // Clamp to 0-15
+    if (skyLight < 0) skyLight = 0;
+    if (skyLight > 15) skyLight = 15;
+    if (blockLight < 0) blockLight = 0;
+    if (blockLight > 15) blockLight = 15;
+    // Pack: skyLight in low byte, blockLight in next byte
+    lightValue = skyLight | (blockLight << 8);
+}
+
 void Tesselator::offset(double x, double y, double z) {
     xo = x;
     yo = y;
@@ -271,6 +320,44 @@ void Tesselator::offset(double x, double y, double z) {
 
 void Tesselator::noColor() {
     noColorFlag = true;
+}
+
+Tesselator::VertexData Tesselator::getVertexData() {
+    VertexData data;
+    data.vertexCount = vertices;
+    data.hasColor = hasColor;
+    data.hasTexture = hasTexture;
+    data.hasNormal = hasNormal;
+
+    // Copy vertex data
+    data.vertices.assign(array.begin(), array.begin() + p);
+
+    // Build indices if needed
+    if (mode == GL_QUADS) {
+        int numQuads = vertices / 4;
+        data.indices.reserve(numQuads * 6);
+        for (int i = 0; i < numQuads; i++) {
+            unsigned int base = i * 4;
+            data.indices.push_back(base + 0);
+            data.indices.push_back(base + 1);
+            data.indices.push_back(base + 2);
+            data.indices.push_back(base + 0);
+            data.indices.push_back(base + 2);
+            data.indices.push_back(base + 3);
+        }
+    } else if (mode == GL_TRIANGLE_FAN && vertices >= 3) {
+        for (int i = 1; i < vertices - 1; i++) {
+            data.indices.push_back(0);
+            data.indices.push_back(i);
+            data.indices.push_back(i + 1);
+        }
+    }
+
+    // Clear internal state
+    clear();
+    tesselating = false;
+
+    return data;
 }
 
 } // namespace mc

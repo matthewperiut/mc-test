@@ -1,6 +1,7 @@
 #pragma once
 
 #include "phys/AABB.hpp"
+#include "renderer/Tesselator.hpp"
 #include <GL/glew.h>
 
 namespace mc {
@@ -17,10 +18,6 @@ public:
     // Chunk size
     static constexpr int SIZE = 16;
 
-    // OpenGL display list IDs (one per render pass)
-    GLuint displayList;
-    GLuint displayListWater;
-
     // State flags
     bool dirty;
     bool loaded;
@@ -32,6 +29,8 @@ public:
     // Stats
     int solidVertexCount;
     int waterVertexCount;
+    int solidIndexCount;
+    int waterIndexCount;
 
     // Distance for sorting
     float distanceSq;
@@ -58,8 +57,25 @@ public:
     // Calculate distance to camera
     void calculateDistance(double camX, double camY, double camZ);
 
-    // Delete display lists
+    // Delete OpenGL resources
     void dispose();
+
+private:
+    void setupVAO(GLuint vao, GLuint vbo, GLuint ebo);
+    void uploadData(GLuint vao, GLuint vbo, GLuint ebo,
+                    const Tesselator::VertexData& data);
+
+    // OpenGL VAO/VBO/EBO for solid geometry
+    GLuint solidVAO;
+    GLuint solidVBO;
+    GLuint solidEBO;
+
+    // OpenGL VAO/VBO/EBO for water geometry
+    GLuint waterVAO;
+    GLuint waterVBO;
+    GLuint waterEBO;
+
+    bool vaoInitialized;
 };
 
 } // namespace mc

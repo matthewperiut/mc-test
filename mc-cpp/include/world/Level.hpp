@@ -87,7 +87,9 @@ public:
     int getSkyLight(int x, int y, int z) const;
     int getBlockLight(int x, int y, int z) const;
     int getSkyDarken() const;  // How much to darken sky light based on time of day (0-11)
+    float getSkyBrightness() const;  // Sky brightness factor (0-1) based on time of day
     float getBrightness(int x, int y, int z) const;
+    float getBrightnessForChunk(int x, int y, int z) const;  // Always uses skyDarken=0 for chunk building
     void updateLightAt(int x, int y, int z);
     void updateLights();
 

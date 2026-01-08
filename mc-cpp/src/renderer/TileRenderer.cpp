@@ -53,6 +53,16 @@ float TileRenderer::getAverageBrightness(int x0, int y0, int z0, int x1, int y1,
     return count > 0 ? total / count : 1.0f;
 }
 
+int TileRenderer::getSkyLight(int x, int y, int z) {
+    if (!level) return 15;
+    return level->getSkyLight(x, y, z);
+}
+
+int TileRenderer::getBlockLight(int x, int y, int z) {
+    if (!level) return 0;
+    return level->getBlockLight(x, y, z);
+}
+
 bool TileRenderer::shouldRenderFace(int x, int y, int z, int face) {
     if (renderAllFaces) return true;
     if (!level) return true;
@@ -172,9 +182,8 @@ void TileRenderer::renderTileForGUI(Tile* tile, int data) {
     int shape = tile->renderShape == TileShape::CUBE ? 0 : 1;
 
     if (shape == 0) {
-        // Standard cube rendering - match Java TileRenderer exactly
-        glTranslatef(-0.5f, -0.5f, -0.5f);
-
+        // Standard cube rendering - apply offset to vertices directly (no glTranslatef)
+        float ox = -0.5f, oy = -0.5f, oz = -0.5f;
         float u0, v0, u1, v1;
 
         // Bottom face (Y=0) - Java: normal(0, -1, 0), renderFaceUp
@@ -182,10 +191,10 @@ void TileRenderer::renderTileForGUI(Tile* tile, int data) {
         t.begin(GL_QUADS);
         t.normal(0.0f, -1.0f, 0.0f);
         t.color(1.0f, 1.0f, 1.0f);
-        t.vertexUV(0, 0, 1, u0, v1);
-        t.vertexUV(0, 0, 0, u0, v0);
-        t.vertexUV(1, 0, 0, u1, v0);
-        t.vertexUV(1, 0, 1, u1, v1);
+        t.vertexUV(0+ox, 0+oy, 1+oz, u0, v1);
+        t.vertexUV(0+ox, 0+oy, 0+oz, u0, v0);
+        t.vertexUV(1+ox, 0+oy, 0+oz, u1, v0);
+        t.vertexUV(1+ox, 0+oy, 1+oz, u1, v1);
         t.end();
 
         // Top face (Y=1) - Java: normal(0, 1, 0), renderFaceDown
@@ -197,10 +206,10 @@ void TileRenderer::renderTileForGUI(Tile* tile, int data) {
         } else {
             t.color(1.0f, 1.0f, 1.0f);
         }
-        t.vertexUV(1, 1, 1, u1, v1);
-        t.vertexUV(1, 1, 0, u1, v0);
-        t.vertexUV(0, 1, 0, u0, v0);
-        t.vertexUV(0, 1, 1, u0, v1);
+        t.vertexUV(1+ox, 1+oy, 1+oz, u1, v1);
+        t.vertexUV(1+ox, 1+oy, 0+oz, u1, v0);
+        t.vertexUV(0+ox, 1+oy, 0+oz, u0, v0);
+        t.vertexUV(0+ox, 1+oy, 1+oz, u0, v1);
         t.end();
 
         // North face (Z=0) - Java: normal(0, 0, -1), renderNorth
@@ -208,10 +217,10 @@ void TileRenderer::renderTileForGUI(Tile* tile, int data) {
         t.begin(GL_QUADS);
         t.normal(0.0f, 0.0f, -1.0f);
         t.color(1.0f, 1.0f, 1.0f);
-        t.vertexUV(0, 1, 0, u1, v0);
-        t.vertexUV(1, 1, 0, u0, v0);
-        t.vertexUV(1, 0, 0, u0, v1);
-        t.vertexUV(0, 0, 0, u1, v1);
+        t.vertexUV(0+ox, 1+oy, 0+oz, u1, v0);
+        t.vertexUV(1+ox, 1+oy, 0+oz, u0, v0);
+        t.vertexUV(1+ox, 0+oy, 0+oz, u0, v1);
+        t.vertexUV(0+ox, 0+oy, 0+oz, u1, v1);
         t.end();
 
         // South face (Z=1) - Java: normal(0, 0, 1), renderSouth
@@ -219,10 +228,10 @@ void TileRenderer::renderTileForGUI(Tile* tile, int data) {
         t.begin(GL_QUADS);
         t.normal(0.0f, 0.0f, 1.0f);
         t.color(1.0f, 1.0f, 1.0f);
-        t.vertexUV(0, 1, 1, u0, v0);
-        t.vertexUV(0, 0, 1, u0, v1);
-        t.vertexUV(1, 0, 1, u1, v1);
-        t.vertexUV(1, 1, 1, u1, v0);
+        t.vertexUV(0+ox, 1+oy, 1+oz, u0, v0);
+        t.vertexUV(0+ox, 0+oy, 1+oz, u0, v1);
+        t.vertexUV(1+ox, 0+oy, 1+oz, u1, v1);
+        t.vertexUV(1+ox, 1+oy, 1+oz, u1, v0);
         t.end();
 
         // West face (X=0) - Java: normal(-1, 0, 0), renderWest
@@ -230,10 +239,10 @@ void TileRenderer::renderTileForGUI(Tile* tile, int data) {
         t.begin(GL_QUADS);
         t.normal(-1.0f, 0.0f, 0.0f);
         t.color(1.0f, 1.0f, 1.0f);
-        t.vertexUV(0, 1, 1, u1, v0);
-        t.vertexUV(0, 1, 0, u0, v0);
-        t.vertexUV(0, 0, 0, u0, v1);
-        t.vertexUV(0, 0, 1, u1, v1);
+        t.vertexUV(0+ox, 1+oy, 1+oz, u1, v0);
+        t.vertexUV(0+ox, 1+oy, 0+oz, u0, v0);
+        t.vertexUV(0+ox, 0+oy, 0+oz, u0, v1);
+        t.vertexUV(0+ox, 0+oy, 1+oz, u1, v1);
         t.end();
 
         // East face (X=1) - Java: normal(1, 0, 0), renderEast
@@ -241,13 +250,11 @@ void TileRenderer::renderTileForGUI(Tile* tile, int data) {
         t.begin(GL_QUADS);
         t.normal(1.0f, 0.0f, 0.0f);
         t.color(1.0f, 1.0f, 1.0f);
-        t.vertexUV(1, 0, 1, u0, v1);
-        t.vertexUV(1, 0, 0, u1, v1);
-        t.vertexUV(1, 1, 0, u1, v0);
-        t.vertexUV(1, 1, 1, u0, v0);
+        t.vertexUV(1+ox, 0+oy, 1+oz, u0, v1);
+        t.vertexUV(1+ox, 0+oy, 0+oz, u1, v1);
+        t.vertexUV(1+ox, 1+oy, 0+oz, u1, v0);
+        t.vertexUV(1+ox, 1+oy, 1+oz, u0, v0);
         t.end();
-
-        glTranslatef(0.5f, 0.5f, 0.5f);
     } else {
         // Cross-shaped block (flowers, etc.) - Java: normal(0, -1, 0)
         t.begin(GL_QUADS);
@@ -273,7 +280,8 @@ void TileRenderer::renderTileForGUIWithColors(Tile* tile, int data) {
     int shape = tile->renderShape == TileShape::CUBE ? 0 : 1;
 
     if (shape == 0) {
-        glTranslatef(-0.5f, -0.5f, -0.5f);
+        // Apply offset directly to vertices instead of using glTranslatef
+        float ox = -0.5f, oy = -0.5f, oz = -0.5f;
 
         float u0, v0, u1, v1;
 
@@ -281,10 +289,10 @@ void TileRenderer::renderTileForGUIWithColors(Tile* tile, int data) {
         getUV(tile->getTexture(0, data), u0, v0, u1, v1);
         t.begin(GL_QUADS);
         t.color(brightBottom, brightBottom, brightBottom);
-        t.vertexUV(0, 0, 1, u0, v1);
-        t.vertexUV(0, 0, 0, u0, v0);
-        t.vertexUV(1, 0, 0, u1, v0);
-        t.vertexUV(1, 0, 1, u1, v1);
+        t.vertexUV(0+ox, 0+oy, 1+oz, u0, v1);
+        t.vertexUV(0+ox, 0+oy, 0+oz, u0, v0);
+        t.vertexUV(1+ox, 0+oy, 0+oz, u1, v0);
+        t.vertexUV(1+ox, 0+oy, 1+oz, u1, v1);
         t.end();
 
         // Top face (Y=1)
@@ -295,53 +303,51 @@ void TileRenderer::renderTileForGUIWithColors(Tile* tile, int data) {
         } else {
             t.color(brightTop, brightTop, brightTop);
         }
-        t.vertexUV(1, 1, 1, u1, v1);
-        t.vertexUV(1, 1, 0, u1, v0);
-        t.vertexUV(0, 1, 0, u0, v0);
-        t.vertexUV(0, 1, 1, u0, v1);
+        t.vertexUV(1+ox, 1+oy, 1+oz, u1, v1);
+        t.vertexUV(1+ox, 1+oy, 0+oz, u1, v0);
+        t.vertexUV(0+ox, 1+oy, 0+oz, u0, v0);
+        t.vertexUV(0+ox, 1+oy, 1+oz, u0, v1);
         t.end();
 
         // North face (Z=0)
         getUV(tile->getTexture(2, data), u0, v0, u1, v1);
         t.begin(GL_QUADS);
         t.color(brightNorth, brightNorth, brightNorth);
-        t.vertexUV(0, 1, 0, u1, v0);
-        t.vertexUV(1, 1, 0, u0, v0);
-        t.vertexUV(1, 0, 0, u0, v1);
-        t.vertexUV(0, 0, 0, u1, v1);
+        t.vertexUV(0+ox, 1+oy, 0+oz, u1, v0);
+        t.vertexUV(1+ox, 1+oy, 0+oz, u0, v0);
+        t.vertexUV(1+ox, 0+oy, 0+oz, u0, v1);
+        t.vertexUV(0+ox, 0+oy, 0+oz, u1, v1);
         t.end();
 
         // South face (Z=1)
         getUV(tile->getTexture(3, data), u0, v0, u1, v1);
         t.begin(GL_QUADS);
         t.color(brightSouth, brightSouth, brightSouth);
-        t.vertexUV(0, 1, 1, u0, v0);
-        t.vertexUV(0, 0, 1, u0, v1);
-        t.vertexUV(1, 0, 1, u1, v1);
-        t.vertexUV(1, 1, 1, u1, v0);
+        t.vertexUV(0+ox, 1+oy, 1+oz, u0, v0);
+        t.vertexUV(0+ox, 0+oy, 1+oz, u0, v1);
+        t.vertexUV(1+ox, 0+oy, 1+oz, u1, v1);
+        t.vertexUV(1+ox, 1+oy, 1+oz, u1, v0);
         t.end();
 
         // West face (X=0)
         getUV(tile->getTexture(4, data), u0, v0, u1, v1);
         t.begin(GL_QUADS);
         t.color(brightWest, brightWest, brightWest);
-        t.vertexUV(0, 1, 1, u1, v0);
-        t.vertexUV(0, 1, 0, u0, v0);
-        t.vertexUV(0, 0, 0, u0, v1);
-        t.vertexUV(0, 0, 1, u1, v1);
+        t.vertexUV(0+ox, 1+oy, 1+oz, u1, v0);
+        t.vertexUV(0+ox, 1+oy, 0+oz, u0, v0);
+        t.vertexUV(0+ox, 0+oy, 0+oz, u0, v1);
+        t.vertexUV(0+ox, 0+oy, 1+oz, u1, v1);
         t.end();
 
         // East face (X=1)
         getUV(tile->getTexture(5, data), u0, v0, u1, v1);
         t.begin(GL_QUADS);
         t.color(brightEast, brightEast, brightEast);
-        t.vertexUV(1, 0, 1, u0, v1);
-        t.vertexUV(1, 0, 0, u1, v1);
-        t.vertexUV(1, 1, 0, u1, v0);
-        t.vertexUV(1, 1, 1, u0, v0);
+        t.vertexUV(1+ox, 0+oy, 1+oz, u0, v1);
+        t.vertexUV(1+ox, 0+oy, 0+oz, u1, v1);
+        t.vertexUV(1+ox, 1+oy, 0+oz, u1, v0);
+        t.vertexUV(1+ox, 1+oy, 1+oz, u0, v0);
         t.end();
-
-        glTranslatef(0.5f, 0.5f, 0.5f);
     } else {
         // Cross-shaped block (flowers, etc.)
         t.begin(GL_QUADS);
@@ -382,7 +388,7 @@ bool TileRenderer::renderTile(Tile* tile, int x, int y, int z) {
 }
 
 void TileRenderer::renderCube(Tile* tile, int x, int y, int z) {
-    // Face brightness multipliers (matching Java)
+    // Face brightness multipliers (matching Java) - now used as vertex color base
     float c0 = 0.5f;   // Bottom face
     float c1 = 1.0f;   // Top face
     float c2 = 0.8f;   // North/South faces
@@ -396,39 +402,52 @@ void TileRenderer::renderCube(Tile* tile, int x, int y, int z) {
     float grassB = 0.420f;  // 107/255
 
     // Render each face if visible
+    // Now using separate light levels instead of baked brightness
     if (shouldRenderFace(x, y, z, 0)) {
-        float br = getBrightness(x, y - 1, z) * c0;
-        t.color(br, br, br);
+        int skyLight = getSkyLight(x, y - 1, z);
+        int blockLight = getBlockLight(x, y - 1, z);
+        t.lightLevel(skyLight, blockLight);
+        t.color(c0, c0, c0);  // Face shading only
         renderFaceDown(tile, x, y, z, tile->getTexture(0));
     }
     if (shouldRenderFace(x, y, z, 1)) {
-        float br = getBrightness(x, y + 1, z) * c1;
+        int skyLight = getSkyLight(x, y + 1, z);
+        int blockLight = getBlockLight(x, y + 1, z);
+        t.lightLevel(skyLight, blockLight);
         // Apply grass tint to top face
         if (isGrass) {
-            t.color(br * grassR, br * grassG, br * grassB);
+            t.color(c1 * grassR, c1 * grassG, c1 * grassB);
         } else {
-            t.color(br, br, br);
+            t.color(c1, c1, c1);
         }
         renderFaceUp(tile, x, y, z, tile->getTexture(1));
     }
     if (shouldRenderFace(x, y, z, 2)) {
-        float br = getBrightness(x, y, z - 1) * c2;
-        t.color(br, br, br);
+        int skyLight = getSkyLight(x, y, z - 1);
+        int blockLight = getBlockLight(x, y, z - 1);
+        t.lightLevel(skyLight, blockLight);
+        t.color(c2, c2, c2);
         renderFaceNorth(tile, x, y, z, tile->getTexture(2));
     }
     if (shouldRenderFace(x, y, z, 3)) {
-        float br = getBrightness(x, y, z + 1) * c2;
-        t.color(br, br, br);
+        int skyLight = getSkyLight(x, y, z + 1);
+        int blockLight = getBlockLight(x, y, z + 1);
+        t.lightLevel(skyLight, blockLight);
+        t.color(c2, c2, c2);
         renderFaceSouth(tile, x, y, z, tile->getTexture(3));
     }
     if (shouldRenderFace(x, y, z, 4)) {
-        float br = getBrightness(x - 1, y, z) * c3;
-        t.color(br, br, br);
+        int skyLight = getSkyLight(x - 1, y, z);
+        int blockLight = getBlockLight(x - 1, y, z);
+        t.lightLevel(skyLight, blockLight);
+        t.color(c3, c3, c3);
         renderFaceWest(tile, x, y, z, tile->getTexture(4));
     }
     if (shouldRenderFace(x, y, z, 5)) {
-        float br = getBrightness(x + 1, y, z) * c3;
-        t.color(br, br, br);
+        int skyLight = getSkyLight(x + 1, y, z);
+        int blockLight = getBlockLight(x + 1, y, z);
+        t.lightLevel(skyLight, blockLight);
+        t.color(c3, c3, c3);
         renderFaceEast(tile, x, y, z, tile->getTexture(5));
     }
 }
@@ -505,8 +524,10 @@ void TileRenderer::renderCross(Tile* tile, int x, int y, int z) {
     float u0, v0, u1, v1;
     getUV(tile->textureIndex, u0, v0, u1, v1);
 
-    float brightness = getBrightness(x, y, z);
-    t.color(brightness, brightness, brightness);
+    int skyLight = getSkyLight(x, y, z);
+    int blockLight = getBlockLight(x, y, z);
+    t.lightLevel(skyLight, blockLight);
+    t.color(1.0f, 1.0f, 1.0f);  // Full brightness, shader will apply light
 
     // Two crossed quads
     double d = 0.45;
@@ -538,8 +559,10 @@ void TileRenderer::renderTorch(Tile* tile, int x, int y, int z, int /*metadata*/
     float u0, v0, u1, v1;
     getUV(tile->textureIndex, u0, v0, u1, v1);
 
-    float brightness = getBrightness(x, y, z);
-    t.color(brightness, brightness, brightness);
+    int skyLight = getSkyLight(x, y, z);
+    int blockLight = getBlockLight(x, y, z);
+    t.lightLevel(skyLight, blockLight);
+    t.color(1.0f, 1.0f, 1.0f);  // Full brightness, shader will apply light
 
     // Torch stick (simplified)
     double w = 0.0625;  // 1/16
@@ -574,8 +597,10 @@ void TileRenderer::renderLiquid(Tile* tile, int x, int y, int z) {
     float u0, v0, u1, v1;
     getUV(tile->textureIndex, u0, v0, u1, v1);
 
-    float brightness = getBrightness(x, y, z);
-    t.color(brightness, brightness, brightness);
+    int skyLight = getSkyLight(x, y, z);
+    int blockLight = getBlockLight(x, y, z);
+    t.lightLevel(skyLight, blockLight);
+    t.color(1.0f, 1.0f, 1.0f);  // Full brightness, shader will apply light
 
     // Render as slightly lowered cube
     double h = 0.875;  // Water height
@@ -619,10 +644,14 @@ void TileRenderer::renderCactus(Tile* tile, int x, int y, int z) {
     float u0, v0, u1, v1;
     double offset = 0.0625;  // Inset by 1/16
 
-    // Sides are inset
+    // Get light at cactus position
+    int skyLight = getSkyLight(x, y, z);
+    int blockLight = getBlockLight(x, y, z);
+    t.lightLevel(skyLight, blockLight);
+
+    // Sides are inset - North/South faces (0.8 multiplier)
     getUV(tile->getTexture(2), u0, v0, u1, v1);
-    float brightness = getBrightness(x, y, z) * 0.8f;
-    t.color(brightness, brightness, brightness);
+    t.color(0.8f, 0.8f, 0.8f);  // Face shading
 
     // North (inset)
     t.vertexUV(x,     y + 1, z + offset, u1, v0);
@@ -636,8 +665,8 @@ void TileRenderer::renderCactus(Tile* tile, int x, int y, int z) {
     t.vertexUV(x + 1, y + 1, z + 1 - offset, u1, v0);
     t.vertexUV(x,     y + 1, z + 1 - offset, u0, v0);
 
-    brightness = getBrightness(x, y, z) * 0.6f;
-    t.color(brightness, brightness, brightness);
+    // West/East faces (0.6 multiplier)
+    t.color(0.6f, 0.6f, 0.6f);
 
     // West (inset)
     t.vertexUV(x + offset, y,     z,     u1, v1);
@@ -653,13 +682,17 @@ void TileRenderer::renderCactus(Tile* tile, int x, int y, int z) {
 
     // Top and bottom
     if (shouldRenderFace(x, y, z, 1)) {
-        brightness = getBrightness(x, y + 1, z);
-        t.color(brightness, brightness, brightness);
+        int topSkyLight = getSkyLight(x, y + 1, z);
+        int topBlockLight = getBlockLight(x, y + 1, z);
+        t.lightLevel(topSkyLight, topBlockLight);
+        t.color(1.0f, 1.0f, 1.0f);  // Top face full brightness
         renderFaceUp(tile, x, y, z, tile->getTexture(1));
     }
     if (shouldRenderFace(x, y, z, 0)) {
-        brightness = getBrightness(x, y - 1, z) * 0.5f;
-        t.color(brightness, brightness, brightness);
+        int bottomSkyLight = getSkyLight(x, y - 1, z);
+        int bottomBlockLight = getBlockLight(x, y - 1, z);
+        t.lightLevel(bottomSkyLight, bottomBlockLight);
+        t.color(0.5f, 0.5f, 0.5f);  // Bottom face shading
         renderFaceDown(tile, x, y, z, tile->getTexture(0));
     }
 }

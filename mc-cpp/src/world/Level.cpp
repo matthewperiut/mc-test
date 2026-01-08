@@ -263,6 +263,37 @@ int Level::getSkyDarken() const {
     return static_cast<int>(celestialAngle * 11.0f);
 }
 
+// brightnessRamp from Java Dimension.updateLightRamp()
+// Formula: (1.0 - var3) / (var3 * 3.0 + 1.0) * (1.0 - 0.05) + 0.05
+// where var3 = 1.0 - i/15.0
+static const float brightnessRamp[16] = {
+    0.05f,     // 0
+    0.0672f,   // 1
+    0.0859f,   // 2
+    0.1072f,   // 3
+    0.1323f,   // 4
+    0.1622f,   // 5
+    0.1988f,   // 6
+    0.2441f,   // 7
+    0.3014f,   // 8
+    0.3753f,   // 9
+    0.4729f,   // 10
+    0.6063f,   // 11
+    0.7969f,   // 12
+    0.9500f,   // 13 (actually converges toward 1.0)
+    0.9500f,   // 14
+    1.0f       // 15
+};
+
+float Level::getSkyBrightness() const {
+    // Calculate sky brightness factor (0-1) based on time of day
+    // This is the inverse of skyDarken - how bright the sky is
+    int skyDarken = getSkyDarken();
+    // skyDarken ranges from 0 (full day) to 11 (darkest night)
+    // Map this to a brightness factor: 0 -> 1.0, 11 -> ~0.2
+    return brightnessRamp[15 - skyDarken];
+}
+
 float Level::getBrightness(int x, int y, int z) const {
     // Match Java Level.getBrightness() exactly:
     // return this.dimension.brightnessRamp[this.getRawBrightness(x, y, z)]
@@ -278,27 +309,18 @@ float Level::getBrightness(int x, int y, int z) const {
     // Use max of adjusted sky light and block light
     int light = std::max(adjustedSky, block);
 
-    // brightnessRamp from Java Dimension.updateLightRamp()
-    // Formula: (1.0 - var3) / (var3 * 3.0 + 1.0) * (1.0 - 0.05) + 0.05
-    // where var3 = 1.0 - i/15.0
-    static const float brightnessRamp[16] = {
-        0.05f,     // 0
-        0.0672f,   // 1
-        0.0859f,   // 2
-        0.1072f,   // 3
-        0.1323f,   // 4
-        0.1622f,   // 5
-        0.1988f,   // 6
-        0.2441f,   // 7
-        0.3014f,   // 8
-        0.3753f,   // 9
-        0.4729f,   // 10
-        0.6063f,   // 11
-        0.7969f,   // 12
-        0.9500f,   // 13 (actually converges toward 1.0)
-        0.9500f,   // 14
-        1.0f       // 15
-    };
+    return brightnessRamp[light];
+}
+
+float Level::getBrightnessForChunk(int x, int y, int z) const {
+    // Same as getBrightness but always assumes full daylight (skyDarken = 0)
+    // Used for chunk building so lighting can be dynamically adjusted by shader
+
+    int sky = getSkyLight(x, y, z);
+    int block = getBlockLight(x, y, z);
+
+    // Use max of sky light and block light (no sky darken adjustment)
+    int light = std::max(sky, block);
 
     return brightnessRamp[light];
 }
@@ -412,7 +434,7 @@ bool Level::mayPlace(int tileId, int x, int y, int z, bool ignoreBoundingBox) co
 }
 
 void Level::tick() {
-    worldTime++;
+    worldTime += 100;
     tickEntities();
     tickTiles();
 }

@@ -6,6 +6,7 @@
 #include "renderer/GameRenderer.hpp"
 #include "renderer/Tesselator.hpp"
 #include "renderer/Textures.hpp"
+#include "renderer/ShaderManager.hpp"
 #include "audio/SoundEngine.hpp"
 #include "gui/Gui.hpp"
 #include "gui/Screen.hpp"
@@ -100,9 +101,13 @@ bool Minecraft::init(int width, int height, bool fs) {
         return false;
     }
 
-    // Create window
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
+    // Create window with OpenGL 3.3 core profile
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+#ifdef __APPLE__
+    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+#endif
 
     GLFWmonitor* monitor = fullscreen ? glfwGetPrimaryMonitor() : nullptr;
     window = glfwCreateWindow(screenWidth, screenHeight, "Minecraft C++", monitor, nullptr);
@@ -186,9 +191,12 @@ void Minecraft::initGL() {
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
 
-    glEnable(GL_TEXTURE_2D);
+    // Note: GL_TEXTURE_2D is always enabled in core profile (no need to call glEnable)
 
     glClearColor(0.5f, 0.8f, 1.0f, 1.0f);
+
+    // Initialize shaders
+    ShaderManager::getInstance().init();
 }
 
 void Minecraft::initWorld() {

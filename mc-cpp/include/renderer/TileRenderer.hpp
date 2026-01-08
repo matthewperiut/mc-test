@@ -47,9 +47,13 @@ public:
     void renderFaceWest(Tile* tile, double x, double y, double z, int texture);
     void renderFaceEast(Tile* tile, double x, double y, double z, int texture);
 
-    // Get brightness at position
+    // Get brightness at position (legacy - for GUI rendering)
     float getBrightness(int x, int y, int z);
     float getAverageBrightness(int x0, int y0, int z0, int x1, int y1, int z1);
+
+    // Get light levels at position (for dynamic lighting)
+    int getSkyLight(int x, int y, int z);
+    int getBlockLight(int x, int y, int z);
 
     // Check if a render shape can be rendered as a 3D block
     // (matches Java TileRenderer.canRender)
