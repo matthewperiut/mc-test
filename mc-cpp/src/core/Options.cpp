@@ -39,7 +39,7 @@ void Options::load(const std::string& path) {
         else if (key == "viewDistance" || key == "renderDistance") renderDistance = std::stoi(value);
         else if (key == "bobView" || key == "viewBobbing") viewBobbing = (value == "true" || value == "1");
         else if (key == "anaglyph3d") anaglyph3d = (value == "true");
-        else if (key == "limitFramerate") limitFramerate = (value == "true");
+        else if (key == "vsync" || key == "limitFramerate") vsync = (value == "true");
         else if (key == "fancyGraphics") fancyGraphics = (value == "true");
         // Game
         else if (key == "difficulty") difficulty = std::stoi(value);
@@ -63,7 +63,7 @@ void Options::save(const std::string& path) {
     file << "viewDistance:" << renderDistance << "\n";
     file << "bobView:" << (viewBobbing ? "true" : "false") << "\n";
     file << "anaglyph3d:" << (anaglyph3d ? "true" : "false") << "\n";
-    file << "limitFramerate:" << (limitFramerate ? "true" : "false") << "\n";
+    file << "vsync:" << (vsync ? "true" : "false") << "\n";
     file << "difficulty:" << difficulty << "\n";
     file << "fancyGraphics:" << (fancyGraphics ? "true" : "false") << "\n";
     file << "skin:" << skin << "\n";

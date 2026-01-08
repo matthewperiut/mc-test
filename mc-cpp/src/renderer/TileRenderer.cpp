@@ -555,42 +555,113 @@ void TileRenderer::renderCross(Tile* tile, int x, int y, int z) {
     t.vertexUV(x + 0.5 - d, y,     z + 0.5 + d, u1, v1);
 }
 
-void TileRenderer::renderTorch(Tile* tile, int x, int y, int z, int /*metadata*/) {
-    float u0, v0, u1, v1;
-    getUV(tile->textureIndex, u0, v0, u1, v1);
+void TileRenderer::renderTorch(Tile* tile, int x, int y, int z, int metadata) {
+    // Get texture coordinates exactly like Java (lines 737-746)
+    int tex = tile->textureIndex;
+    int xt = (tex & 15) << 4;      // X pixel position in atlas
+    int yt = tex & 240;            // Y pixel position in atlas
+
+    float u0 = static_cast<float>(xt) / 256.0f;
+    float u1 = (static_cast<float>(xt) + 15.99f) / 256.0f;
+    float v0 = static_cast<float>(yt) / 256.0f;
+    float v1 = (static_cast<float>(yt) + 15.99f) / 256.0f;
+
+    // UV coordinates for the top cap (flame center) - matching Java lines 743-746
+    double uc0 = static_cast<double>(u0) + 0.02734375;   // 7/256
+    double vc0 = static_cast<double>(v0) + 0.0234375;    // 6/256
+    double uc1 = static_cast<double>(u0) + 0.03515625;   // 9/256
+    double vc1 = static_cast<double>(v0) + 0.03125;      // 8/256
 
     int skyLight = getSkyLight(x, y, z);
     int blockLight = getBlockLight(x, y, z);
     t.lightLevel(skyLight, blockLight);
-    t.color(1.0f, 1.0f, 1.0f);  // Full brightness, shader will apply light
+    t.color(1.0f, 1.0f, 1.0f);
 
-    // Torch stick (simplified)
-    double w = 0.0625;  // 1/16
-    double h = 0.625;   // 10/16
+    // Calculate position and tilt based on metadata (matching Java tesselateTorchInWorld lines 73-97)
+    double px = static_cast<double>(x);
+    double py = static_cast<double>(y);
+    double pz = static_cast<double>(z);
+    double xxa = 0.0;  // X-axis tilt
+    double zza = 0.0;  // Z-axis tilt
 
-    // Front
-    t.vertexUV(x + 0.5 - w, y,     z + 0.5 + w, u0, v1);
-    t.vertexUV(x + 0.5 - w, y + h, z + 0.5 + w, u0, v0);
-    t.vertexUV(x + 0.5 + w, y + h, z + 0.5 + w, u1, v0);
-    t.vertexUV(x + 0.5 + w, y,     z + 0.5 + w, u1, v1);
+    double tiltAmount = 0.4;
+    double heightOffset = 0.2;
+    double posOffset = 0.1;  // 0.5 - 0.4
 
-    // Back
-    t.vertexUV(x + 0.5 + w, y,     z + 0.5 - w, u0, v1);
-    t.vertexUV(x + 0.5 + w, y + h, z + 0.5 - w, u0, v0);
-    t.vertexUV(x + 0.5 - w, y + h, z + 0.5 - w, u1, v0);
-    t.vertexUV(x + 0.5 - w, y,     z + 0.5 - w, u1, v1);
+    // Metadata: 1=west wall, 2=east wall, 3=north wall, 4=south wall, 5=floor
+    switch (metadata) {
+        case 1:  // Attached to west wall (x-1), torch leans east
+            px = x - posOffset;
+            py = y + heightOffset;
+            xxa = -tiltAmount;
+            break;
+        case 2:  // Attached to east wall (x+1), torch leans west
+            px = x + posOffset;
+            py = y + heightOffset;
+            xxa = tiltAmount;
+            break;
+        case 3:  // Attached to north wall (z-1), torch leans south
+            pz = z - posOffset;
+            py = y + heightOffset;
+            zza = -tiltAmount;
+            break;
+        case 4:  // Attached to south wall (z+1), torch leans north
+            pz = z + posOffset;
+            py = y + heightOffset;
+            zza = tiltAmount;
+            break;
+        case 5:  // Floor mounted
+        default:
+            // Straight up, no tilt
+            break;
+    }
 
-    // Left
-    t.vertexUV(x + 0.5 - w, y,     z + 0.5 - w, u0, v1);
-    t.vertexUV(x + 0.5 - w, y + h, z + 0.5 - w, u0, v0);
-    t.vertexUV(x + 0.5 - w, y + h, z + 0.5 + w, u1, v0);
-    t.vertexUV(x + 0.5 - w, y,     z + 0.5 + w, u1, v1);
+    // Add 0.5 to center in block (matching Java line 747-748)
+    px += 0.5;
+    pz += 0.5;
 
-    // Right
-    t.vertexUV(x + 0.5 + w, y,     z + 0.5 + w, u0, v1);
-    t.vertexUV(x + 0.5 + w, y + h, z + 0.5 + w, u0, v0);
-    t.vertexUV(x + 0.5 + w, y + h, z + 0.5 - w, u1, v0);
-    t.vertexUV(x + 0.5 + w, y,     z + 0.5 - w, u1, v1);
+    // Block edges (FULL block, not torch width) - matching Java lines 749-752
+    double bx0 = px - 0.5;
+    double bx1 = px + 0.5;
+    double bz0 = pz - 0.5;
+    double bz1 = pz + 0.5;
+
+    // Torch dimensions - matching Java lines 753-754
+    double r = 0.0625;   // Half width: 1/16
+    double h = 0.625;    // Height ratio: 10/16
+
+    // Top cap (horizontal quad at torch head) - matching Java lines 755-758
+    double topOffX = xxa * (1.0 - h);
+    double topOffZ = zza * (1.0 - h);
+    t.vertexUV(px + topOffX - r, py + h, pz + topOffZ - r, uc0, vc0);
+    t.vertexUV(px + topOffX - r, py + h, pz + topOffZ + r, uc0, vc1);
+    t.vertexUV(px + topOffX + r, py + h, pz + topOffZ + r, uc1, vc1);
+    t.vertexUV(px + topOffX + r, py + h, pz + topOffZ - r, uc1, vc0);
+
+    // Four vertical faces forming a cross pattern - matching Java lines 759-774 exactly
+    // Face 1: -X side plane (at x = px - r, spans full block Z)
+    t.vertexUV(px - r,       py + 1.0, bz0,       u0, v0);
+    t.vertexUV(px - r + xxa, py,       bz0 + zza, u0, v1);
+    t.vertexUV(px - r + xxa, py,       bz1 + zza, u1, v1);
+    t.vertexUV(px - r,       py + 1.0, bz1,       u1, v0);
+
+    // Face 2: +X side plane (at x = px + r, spans full block Z, reversed winding)
+    t.vertexUV(px + r,       py + 1.0, bz1,       u0, v0);
+    t.vertexUV(px + r + xxa, py,       bz1 + zza, u0, v1);
+    t.vertexUV(px + r + xxa, py,       bz0 + zza, u1, v1);
+    t.vertexUV(px + r,       py + 1.0, bz0,       u1, v0);
+
+    // Face 3: +Z side plane (at z = pz + r, spans full block X)
+    t.vertexUV(bx0,       py + 1.0, pz + r,       u0, v0);
+    t.vertexUV(bx0 + xxa, py,       pz + r + zza, u0, v1);
+    t.vertexUV(bx1 + xxa, py,       pz + r + zza, u1, v1);
+    t.vertexUV(bx1,       py + 1.0, pz + r,       u1, v0);
+
+    // Face 4: -Z side plane (at z = pz - r, spans full block X, reversed winding)
+    t.vertexUV(bx1,       py + 1.0, pz - r,       u0, v0);
+    t.vertexUV(bx1 + xxa, py,       pz - r + zza, u0, v1);
+    t.vertexUV(bx0 + xxa, py,       pz - r + zza, u1, v1);
+    t.vertexUV(bx0,       py + 1.0, pz - r,       u1, v0);
 }
 
 void TileRenderer::renderLiquid(Tile* tile, int x, int y, int z) {

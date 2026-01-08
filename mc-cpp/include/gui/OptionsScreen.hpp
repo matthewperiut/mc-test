@@ -41,7 +41,7 @@ private:
     std::string getRenderDistanceLabel() const;
     std::string getViewBobbingLabel() const;
     std::string getAnaglyphLabel() const;
-    std::string getLimitFramerateLabel() const;
+    std::string getVsyncLabel() const;
     std::string getDifficultyLabel() const;
     std::string getGraphicsLabel() const;
 
@@ -54,7 +54,7 @@ private:
     static constexpr int BUTTON_RENDER_DISTANCE = 4;
     static constexpr int BUTTON_VIEW_BOBBING = 5;
     static constexpr int BUTTON_ANAGLYPH = 6;
-    static constexpr int BUTTON_LIMIT_FRAMERATE = 7;
+    static constexpr int BUTTON_VSYNC = 7;
     static constexpr int BUTTON_DIFFICULTY = 8;
     static constexpr int BUTTON_GRAPHICS = 9;
     // Special buttons

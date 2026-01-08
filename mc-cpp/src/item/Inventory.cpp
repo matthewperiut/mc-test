@@ -53,7 +53,7 @@ Inventory::Inventory(Player* player)
     items[5] = ItemStack(17, 64); // Wood log
     items[6] = ItemStack(280, 64); // Stick (item id 280 = 256 + 24)
     items[7] = ItemStack(45, 64); // Bricks
-    items[8] = ItemStack();       // Empty slot for hand testing
+    items[8] = ItemStack(50, 64); // Torches
 }
 
 ItemStack& Inventory::getItem(int slot) {

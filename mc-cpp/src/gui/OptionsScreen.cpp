@@ -63,7 +63,7 @@ void OptionsScreen::initButtons() {
     buttons.push_back(std::make_unique<Button>(
         BUTTON_ANAGLYPH, centerX - 155, startY + 72, 150, 20, getAnaglyphLabel()));
     buttons.push_back(std::make_unique<Button>(
-        BUTTON_LIMIT_FRAMERATE, centerX + 5, startY + 72, 150, 20, getLimitFramerateLabel()));
+        BUTTON_VSYNC, centerX + 5, startY + 72, 150, 20, getVsyncLabel()));
 
     buttons.push_back(std::make_unique<Button>(
         BUTTON_DIFFICULTY, centerX - 155, startY + 96, 150, 20, getDifficultyLabel()));
@@ -103,8 +103,8 @@ void OptionsScreen::updateButtonLabels() {
             case BUTTON_ANAGLYPH:
                 btn->message = getAnaglyphLabel();
                 break;
-            case BUTTON_LIMIT_FRAMERATE:
-                btn->message = getLimitFramerateLabel();
+            case BUTTON_VSYNC:
+                btn->message = getVsyncLabel();
                 break;
             case BUTTON_DIFFICULTY:
                 btn->message = getDifficultyLabel();
@@ -157,8 +157,8 @@ std::string OptionsScreen::getAnaglyphLabel() const {
     return minecraft->options.anaglyph3d ? "3D Anaglyph: ON" : "3D Anaglyph: OFF";
 }
 
-std::string OptionsScreen::getLimitFramerateLabel() const {
-    return minecraft->options.limitFramerate ? "Limit Framerate: ON" : "Limit Framerate: OFF";
+std::string OptionsScreen::getVsyncLabel() const {
+    return minecraft->options.vsync ? "Vsync: ON" : "Vsync: OFF";
 }
 
 std::string OptionsScreen::getDifficultyLabel() const {
@@ -344,8 +344,9 @@ void OptionsScreen::buttonClicked(int buttonId) {
             updateButtonLabels();
             break;
 
-        case BUTTON_LIMIT_FRAMERATE:
-            minecraft->options.limitFramerate = !minecraft->options.limitFramerate;
+        case BUTTON_VSYNC:
+            minecraft->options.vsync = !minecraft->options.vsync;
+            glfwSwapInterval(minecraft->options.vsync ? 1 : 0);
             updateButtonLabels();
             break;
 

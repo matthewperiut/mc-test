@@ -150,6 +150,7 @@ public:
     // Collision
     virtual AABB getCollisionBox(int x, int y, int z) const;
     virtual AABB getSelectionBox(int x, int y, int z) const;
+    virtual AABB getSelectionBox(Level* level, int x, int y, int z) const;  // Metadata-aware version
     virtual bool canCollide() const { return solid; }
 
     // Rendering
@@ -163,6 +164,10 @@ public:
     virtual void onRemove(Level* level, int x, int y, int z) {}
     virtual void onNeighborChange(Level* level, int x, int y, int z, int neighborId) {}
     virtual bool canSurvive(Level* level, int x, int y, int z) const { return true; }
+
+    // Placement (for directional blocks like torches)
+    virtual bool mayPlace(Level* level, int x, int y, int z) const;
+    virtual void setPlacedOnFace(Level* level, int x, int y, int z, int face) {}
 
     // Block breaking (matching Java Tile)
     virtual float getDestroyProgress(class Player* player) const;

@@ -131,8 +131,11 @@ bool Minecraft::init(int width, int height, bool fs) {
     glfwSetScrollCallback(window, glfwScrollCallback);
     glfwSetFramebufferSizeCallback(window, glfwFramebufferSizeCallback);
 
-    // Enable vsync
-    glfwSwapInterval(1);
+    // Load options
+    options.load("options.txt");
+
+    // Apply vsync setting from options
+    glfwSwapInterval(options.vsync ? 1 : 0);
 
     // Initialize GLEW
     glewExperimental = GL_TRUE;
@@ -446,12 +449,27 @@ void Minecraft::handleInput() {
 
                     // Check if block can be placed (Java: level.mayPlace())
                     // This checks for entity collisions (can't place inside player)
-                    if (level->mayPlace(held.id, x, y, z, false)) {
+                    // Also check tile-specific mayPlace (e.g., torches need adjacent solid block)
+                    Tile* tileToPlace = Tile::tiles[held.id];
+                    bool canPlace = level->mayPlace(held.id, x, y, z, false);
+                    if (canPlace && tileToPlace) {
+                        canPlace = tileToPlace->mayPlace(level.get(), x, y, z);
+                    }
+
+                    if (canPlace) {
                         // Only swing if block actually gets placed (differs from Java)
                         player->swing();
 
                         // Place the block
                         level->setTile(x, y, z, held.id);
+
+                        // Call tile's onPlace for auto-detection of orientation
+                        if (tileToPlace) {
+                            tileToPlace->onPlace(level.get(), x, y, z);
+                            // Call setPlacedOnFace to honor the clicked face (for torches etc.)
+                            int face = static_cast<int>(gameRenderer->hitResult.face);
+                            tileToPlace->setPlacedOnFace(level.get(), x, y, z, face);
+                        }
 
                         // Play place sound (matching Java TileItem line 57)
                         // Java: level.playSound(x+0.5, y+0.5, z+0.5, soundType.getStepSound(), (volume+1.0)/2.0, pitch*0.8)

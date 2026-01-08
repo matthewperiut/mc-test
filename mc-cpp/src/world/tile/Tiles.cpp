@@ -1,4 +1,5 @@
 #include "world/tile/Tile.hpp"
+#include "world/Level.hpp"
 
 namespace mc {
 
@@ -136,6 +137,14 @@ public:
 
 class TorchTile : public Tile {
 public:
+    // Torch metadata:
+    // 0 = invalid/default (will be corrected on place)
+    // 1 = attached to wall at x-1 (west wall, torch points east)
+    // 2 = attached to wall at x+1 (east wall, torch points west)
+    // 3 = attached to wall at z-1 (north wall, torch points south)
+    // 4 = attached to wall at z+1 (south wall, torch points north)
+    // 5 = attached to floor (y-1)
+
     TorchTile() : Tile(TORCH, 80) {
         setHardness(0.0f);
         setShape(TileShape::TORCH);
@@ -148,8 +157,113 @@ public:
 
     int getLightEmission() const override { return 14; }
 
+    // Check if torch can be placed (needs adjacent solid block)
+    bool mayPlace(Level* level, int x, int y, int z) const override {
+        if (level->isSolid(x - 1, y, z)) return true;  // West wall
+        if (level->isSolid(x + 1, y, z)) return true;  // East wall
+        if (level->isSolid(x, y, z - 1)) return true;  // North wall
+        if (level->isSolid(x, y, z + 1)) return true;  // South wall
+        if (level->isSolid(x, y - 1, z)) return true;  // Floor
+        return false;
+    }
+
+    // Set metadata when placed (auto-detect support)
+    void onPlace(Level* level, int x, int y, int z) override {
+        // Priority order matching Java: west, east, north, south, floor
+        if (level->isSolid(x - 1, y, z)) {
+            level->setData(x, y, z, 1);  // West wall
+        } else if (level->isSolid(x + 1, y, z)) {
+            level->setData(x, y, z, 2);  // East wall
+        } else if (level->isSolid(x, y, z - 1)) {
+            level->setData(x, y, z, 3);  // North wall
+        } else if (level->isSolid(x, y, z + 1)) {
+            level->setData(x, y, z, 4);  // South wall
+        } else if (level->isSolid(x, y - 1, z)) {
+            level->setData(x, y, z, 5);  // Floor
+        }
+    }
+
+    // Set metadata based on which face player clicked (matching Java TorchTile.setPlacedOnFace)
+    void setPlacedOnFace(Level* level, int x, int y, int z, int face) override {
+        int data = level->getData(x, y, z);
+
+        // face values: 0=DOWN, 1=UP, 2=NORTH(-Z), 3=SOUTH(+Z), 4=WEST(-X), 5=EAST(+X)
+        if (face == 1 && level->isSolid(x, y - 1, z)) {
+            data = 5;  // Clicked top face = floor torch
+        }
+        if (face == 2 && level->isSolid(x, y, z + 1)) {
+            data = 4;  // Clicked north face = attach to south wall
+        }
+        if (face == 3 && level->isSolid(x, y, z - 1)) {
+            data = 3;  // Clicked south face = attach to north wall
+        }
+        if (face == 4 && level->isSolid(x + 1, y, z)) {
+            data = 2;  // Clicked west face = attach to east wall
+        }
+        if (face == 5 && level->isSolid(x - 1, y, z)) {
+            data = 1;  // Clicked east face = attach to west wall
+        }
+
+        level->setData(x, y, z, data);
+    }
+
+    // Check if support block was removed
+    void onNeighborChange(Level* level, int x, int y, int z, int /*neighborId*/) override {
+        int data = level->getData(x, y, z);
+        bool shouldDrop = false;
+
+        if (data == 1 && !level->isSolid(x - 1, y, z)) shouldDrop = true;  // West wall removed
+        if (data == 2 && !level->isSolid(x + 1, y, z)) shouldDrop = true;  // East wall removed
+        if (data == 3 && !level->isSolid(x, y, z - 1)) shouldDrop = true;  // North wall removed
+        if (data == 4 && !level->isSolid(x, y, z + 1)) shouldDrop = true;  // South wall removed
+        if (data == 5 && !level->isSolid(x, y - 1, z)) shouldDrop = true;  // Floor removed
+
+        if (shouldDrop) {
+            // Remove torch (drops as item in full game)
+            level->setTile(x, y, z, 0);
+        }
+    }
+
+    // Torch has no collision
     AABB getCollisionBox(int /*x*/, int /*y*/, int /*z*/) const override {
-        return AABB();  // No collision
+        return AABB();
+    }
+
+    // Default selection box (used when no level context available)
+    AABB getSelectionBox(int x, int y, int z) const override {
+        // Floor torch box (metadata 5 or default)
+        float w = 0.1f;
+        return AABB(x + 0.5f - w, y, z + 0.5f - w,
+                    x + 0.5f + w, y + 0.6f, z + 0.5f + w);
+    }
+
+    // Metadata-aware selection box (matching Java TorchTile.clip)
+    AABB getSelectionBox(Level* level, int x, int y, int z) const override {
+        int data = level->getData(x, y, z) & 7;
+        float w = 0.15f;
+
+        if (data == 1) {
+            // West wall - extends towards east
+            return AABB(x, y + 0.2f, z + 0.5f - w,
+                        x + w * 2.0f, y + 0.8f, z + 0.5f + w);
+        } else if (data == 2) {
+            // East wall - extends towards west
+            return AABB(x + 1.0f - w * 2.0f, y + 0.2f, z + 0.5f - w,
+                        x + 1.0f, y + 0.8f, z + 0.5f + w);
+        } else if (data == 3) {
+            // North wall - extends towards south
+            return AABB(x + 0.5f - w, y + 0.2f, z,
+                        x + 0.5f + w, y + 0.8f, z + w * 2.0f);
+        } else if (data == 4) {
+            // South wall - extends towards north
+            return AABB(x + 0.5f - w, y + 0.2f, z + 1.0f - w * 2.0f,
+                        x + 0.5f + w, y + 0.8f, z + 1.0f);
+        } else {
+            // Floor (data == 5 or default)
+            w = 0.1f;
+            return AABB(x + 0.5f - w, y, z + 0.5f - w,
+                        x + 0.5f + w, y + 0.6f, z + 0.5f + w);
+        }
     }
 };
 

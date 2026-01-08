@@ -85,12 +85,21 @@ AABB Tile::getSelectionBox(int x, int y, int z) const {
     return getCollisionBox(x, y, z);
 }
 
+AABB Tile::getSelectionBox(Level* /*level*/, int x, int y, int z) const {
+    // Default: use the non-metadata-aware version
+    return getSelectionBox(x, y, z);
+}
+
 bool Tile::shouldRenderFace(Level* /*level*/, int /*x*/, int /*y*/, int /*z*/, int /*face*/) const {
     return true;
 }
 
 float Tile::getBrightness(Level* /*level*/, int /*x*/, int /*y*/, int /*z*/) const {
     return 1.0f;
+}
+
+bool Tile::mayPlace(Level* /*level*/, int /*x*/, int /*y*/, int /*z*/) const {
+    return true;  // Default: can place anywhere
 }
 
 float Tile::getDestroyProgress(Player* /*player*/) const {

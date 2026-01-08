@@ -368,24 +368,54 @@ void Gui::renderGuiItem(const ItemStack& item, int x, int y, float z, Font* font
     if (item.id > 0 && item.id < 256) {
         Tile* tile = Tile::tiles[item.id];
         if (tile) {
-            Textures::getInstance().bind("resources/terrain.png");
+            // Check if this tile can be rendered as a 3D block in GUI (matching Java ItemRenderer.renderGuiItem)
+            int renderShape = static_cast<int>(tile->renderShape);
+            if (TileRenderer::canRender(renderShape)) {
+                // Render as 3D isometric block
+                Textures::getInstance().bind("resources/terrain.png");
 
-            MatrixStack::modelview().push();
-            MatrixStack::modelview().translate(static_cast<float>(x - 2), static_cast<float>(y + 3), z);
-            MatrixStack::modelview().scale(10.0f, 10.0f, 10.0f);
-            MatrixStack::modelview().translate(1.0f, 0.5f, 8.0f);
-            MatrixStack::modelview().rotate(-210.0f, 1.0f, 0.0f, 0.0f);
-            MatrixStack::modelview().rotate(-45.0f, 0.0f, 1.0f, 0.0f);
+                MatrixStack::modelview().push();
+                MatrixStack::modelview().translate(static_cast<float>(x - 2), static_cast<float>(y + 3), z);
+                MatrixStack::modelview().scale(10.0f, 10.0f, 10.0f);
+                MatrixStack::modelview().translate(1.0f, 0.5f, 8.0f);
+                MatrixStack::modelview().rotate(-210.0f, 1.0f, 0.0f, 0.0f);
+                MatrixStack::modelview().rotate(-45.0f, 0.0f, 1.0f, 0.0f);
 
-            ShaderManager::getInstance().useWorldShader();
-            ShaderManager::getInstance().updateMatrices();
-            // Disable fog for GUI blocks by pushing fog very far away
-            ShaderManager::getInstance().updateFog(10000.0f, 20000.0f, 1.0f, 1.0f, 1.0f);
+                ShaderManager::getInstance().useWorldShader();
+                ShaderManager::getInstance().updateMatrices();
+                // Disable fog for GUI blocks by pushing fog very far away
+                ShaderManager::getInstance().updateFog(10000.0f, 20000.0f, 1.0f, 1.0f, 1.0f);
 
-            // renderTileForGUIWithColors handles its own begin/end cycles per face
-            tileRenderer.renderTileForGUIWithColors(tile, item.getAuxValue());
+                // renderTileForGUIWithColors handles its own begin/end cycles per face
+                tileRenderer.renderTileForGUIWithColors(tile, item.getAuxValue());
 
-            MatrixStack::modelview().pop();
+                MatrixStack::modelview().pop();
+            } else {
+                // Render as 2D sprite from terrain.png (for torches, crosses, etc.)
+                Textures::getInstance().bind("resources/terrain.png");
+
+                int icon = tile->textureIndex;
+                int sx = (icon % 16) * 16;
+                int sy = (icon / 16) * 16;
+
+                ShaderManager::getInstance().useGuiShader();
+                ShaderManager::getInstance().updateMatrices();
+                ShaderManager::getInstance().setUseTexture(true);
+
+                float u0 = static_cast<float>(sx) / 256.0f;
+                float u1 = static_cast<float>(sx + 16) / 256.0f;
+                float v0 = static_cast<float>(sy) / 256.0f;
+                float v1 = static_cast<float>(sy + 16) / 256.0f;
+
+                Tesselator& t = Tesselator::getInstance();
+                t.begin(GL_QUADS);
+                t.color(1.0f, 1.0f, 1.0f, 1.0f);
+                t.tex(u0, v1); t.vertex(static_cast<float>(x), static_cast<float>(y + 16), z);
+                t.tex(u1, v1); t.vertex(static_cast<float>(x + 16), static_cast<float>(y + 16), z);
+                t.tex(u1, v0); t.vertex(static_cast<float>(x + 16), static_cast<float>(y), z);
+                t.tex(u0, v0); t.vertex(static_cast<float>(x), static_cast<float>(y), z);
+                t.end();
+            }
         }
     } else if (item.id >= 256) {
         Item* itemDef = Item::byId(item.id);

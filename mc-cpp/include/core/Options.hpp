@@ -19,7 +19,7 @@ public:
     int renderDistance = 0;  // 0=far, 1=normal, 2=short, 3=tiny (Java default is far)
     bool viewBobbing = true;
     bool anaglyph3d = false;
-    bool limitFramerate = false;
+    bool vsync = true;
     bool fancyGraphics = true;
 
     // Game settings
