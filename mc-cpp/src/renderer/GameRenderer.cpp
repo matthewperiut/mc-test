@@ -253,11 +253,32 @@ void GameRenderer::renderBreakingAnimation(float progress) {
     float texV = static_cast<float>(textureIndex / 16) / 16.0f;
     float texSize = 1.0f / 16.0f;
 
-    float x = static_cast<float>(hitResult.x);
-    float y = static_cast<float>(hitResult.y);
-    float z = static_cast<float>(hitResult.z);
+    int bx = hitResult.x;
+    int by = hitResult.y;
+    int bz = hitResult.z;
 
     float e = 0.002f;
+
+    // Get the tile's selection box for the breaking animation
+    float x0, y0, z0, x1, y1, z1;
+    Tile* tile = minecraft->level ? minecraft->level->getTileAt(bx, by, bz) : nullptr;
+    if (tile) {
+        AABB selBox = tile->getSelectionBox(minecraft->level.get(), bx, by, bz);
+        x0 = static_cast<float>(selBox.x0);
+        y0 = static_cast<float>(selBox.y0);
+        z0 = static_cast<float>(selBox.z0);
+        x1 = static_cast<float>(selBox.x1);
+        y1 = static_cast<float>(selBox.y1);
+        z1 = static_cast<float>(selBox.z1);
+    } else {
+        // Fallback to full block
+        x0 = static_cast<float>(bx);
+        y0 = static_cast<float>(by);
+        z0 = static_cast<float>(bz);
+        x1 = static_cast<float>(bx) + 1.0f;
+        y1 = static_cast<float>(by) + 1.0f;
+        z1 = static_cast<float>(bz) + 1.0f;
+    }
 
     Textures::getInstance().bind("resources/terrain.png");
     glEnable(GL_BLEND);
@@ -277,55 +298,55 @@ void GameRenderer::renderBreakingAnimation(float progress) {
     // Bottom face
     t.begin(GL_QUADS);
     t.color(1.0f, 1.0f, 1.0f, 1.0f);
-    t.tex(texU, texV + texSize); t.vertex(x - e, y - e, z + 1 + e);
-    t.tex(texU + texSize, texV + texSize); t.vertex(x + 1 + e, y - e, z + 1 + e);
-    t.tex(texU + texSize, texV); t.vertex(x + 1 + e, y - e, z - e);
-    t.tex(texU, texV); t.vertex(x - e, y - e, z - e);
+    t.tex(texU, texV + texSize); t.vertex(x0 - e, y0 - e, z1 + e);
+    t.tex(texU + texSize, texV + texSize); t.vertex(x1 + e, y0 - e, z1 + e);
+    t.tex(texU + texSize, texV); t.vertex(x1 + e, y0 - e, z0 - e);
+    t.tex(texU, texV); t.vertex(x0 - e, y0 - e, z0 - e);
     t.end();
 
     // Top face
     t.begin(GL_QUADS);
     t.color(1.0f, 1.0f, 1.0f, 1.0f);
-    t.tex(texU, texV); t.vertex(x - e, y + 1 + e, z - e);
-    t.tex(texU + texSize, texV); t.vertex(x + 1 + e, y + 1 + e, z - e);
-    t.tex(texU + texSize, texV + texSize); t.vertex(x + 1 + e, y + 1 + e, z + 1 + e);
-    t.tex(texU, texV + texSize); t.vertex(x - e, y + 1 + e, z + 1 + e);
+    t.tex(texU, texV); t.vertex(x0 - e, y1 + e, z0 - e);
+    t.tex(texU + texSize, texV); t.vertex(x1 + e, y1 + e, z0 - e);
+    t.tex(texU + texSize, texV + texSize); t.vertex(x1 + e, y1 + e, z1 + e);
+    t.tex(texU, texV + texSize); t.vertex(x0 - e, y1 + e, z1 + e);
     t.end();
 
     // North face
     t.begin(GL_QUADS);
     t.color(1.0f, 1.0f, 1.0f, 1.0f);
-    t.tex(texU + texSize, texV); t.vertex(x - e, y + 1 + e, z - e);
-    t.tex(texU, texV); t.vertex(x + 1 + e, y + 1 + e, z - e);
-    t.tex(texU, texV + texSize); t.vertex(x + 1 + e, y - e, z - e);
-    t.tex(texU + texSize, texV + texSize); t.vertex(x - e, y - e, z - e);
+    t.tex(texU + texSize, texV); t.vertex(x0 - e, y1 + e, z0 - e);
+    t.tex(texU, texV); t.vertex(x1 + e, y1 + e, z0 - e);
+    t.tex(texU, texV + texSize); t.vertex(x1 + e, y0 - e, z0 - e);
+    t.tex(texU + texSize, texV + texSize); t.vertex(x0 - e, y0 - e, z0 - e);
     t.end();
 
     // South face
     t.begin(GL_QUADS);
     t.color(1.0f, 1.0f, 1.0f, 1.0f);
-    t.tex(texU, texV); t.vertex(x - e, y + 1 + e, z + 1 + e);
-    t.tex(texU, texV + texSize); t.vertex(x - e, y - e, z + 1 + e);
-    t.tex(texU + texSize, texV + texSize); t.vertex(x + 1 + e, y - e, z + 1 + e);
-    t.tex(texU + texSize, texV); t.vertex(x + 1 + e, y + 1 + e, z + 1 + e);
+    t.tex(texU, texV); t.vertex(x0 - e, y1 + e, z1 + e);
+    t.tex(texU, texV + texSize); t.vertex(x0 - e, y0 - e, z1 + e);
+    t.tex(texU + texSize, texV + texSize); t.vertex(x1 + e, y0 - e, z1 + e);
+    t.tex(texU + texSize, texV); t.vertex(x1 + e, y1 + e, z1 + e);
     t.end();
 
     // West face
     t.begin(GL_QUADS);
     t.color(1.0f, 1.0f, 1.0f, 1.0f);
-    t.tex(texU + texSize, texV); t.vertex(x - e, y + 1 + e, z + 1 + e);
-    t.tex(texU, texV); t.vertex(x - e, y + 1 + e, z - e);
-    t.tex(texU, texV + texSize); t.vertex(x - e, y - e, z - e);
-    t.tex(texU + texSize, texV + texSize); t.vertex(x - e, y - e, z + 1 + e);
+    t.tex(texU + texSize, texV); t.vertex(x0 - e, y1 + e, z1 + e);
+    t.tex(texU, texV); t.vertex(x0 - e, y1 + e, z0 - e);
+    t.tex(texU, texV + texSize); t.vertex(x0 - e, y0 - e, z0 - e);
+    t.tex(texU + texSize, texV + texSize); t.vertex(x0 - e, y0 - e, z1 + e);
     t.end();
 
     // East face
     t.begin(GL_QUADS);
     t.color(1.0f, 1.0f, 1.0f, 1.0f);
-    t.tex(texU, texV); t.vertex(x + 1 + e, y + 1 + e, z - e);
-    t.tex(texU + texSize, texV); t.vertex(x + 1 + e, y + 1 + e, z + 1 + e);
-    t.tex(texU + texSize, texV + texSize); t.vertex(x + 1 + e, y - e, z + 1 + e);
-    t.tex(texU, texV + texSize); t.vertex(x + 1 + e, y - e, z - e);
+    t.tex(texU, texV); t.vertex(x1 + e, y1 + e, z0 - e);
+    t.tex(texU + texSize, texV); t.vertex(x1 + e, y1 + e, z1 + e);
+    t.tex(texU + texSize, texV + texSize); t.vertex(x1 + e, y0 - e, z1 + e);
+    t.tex(texU, texV + texSize); t.vertex(x1 + e, y0 - e, z0 - e);
     t.end();
 
     glPolygonOffset(0.0f, 0.0f);
@@ -355,12 +376,26 @@ void GameRenderer::renderHitOutline() {
 
     float ss = 0.002f;
 
-    float x0 = static_cast<float>(bx) - ss;
-    float y0 = static_cast<float>(by) - ss;
-    float z0 = static_cast<float>(bz) - ss;
-    float x1 = static_cast<float>(bx) + 1.0f + ss;
-    float y1 = static_cast<float>(by) + 1.0f + ss;
-    float z1 = static_cast<float>(bz) + 1.0f + ss;
+    // Get the tile's selection box (supports custom hitboxes like torches)
+    float x0, y0, z0, x1, y1, z1;
+    Tile* tile = minecraft->level ? minecraft->level->getTileAt(bx, by, bz) : nullptr;
+    if (tile) {
+        AABB selBox = tile->getSelectionBox(minecraft->level.get(), bx, by, bz);
+        x0 = static_cast<float>(selBox.x0) - ss;
+        y0 = static_cast<float>(selBox.y0) - ss;
+        z0 = static_cast<float>(selBox.z0) - ss;
+        x1 = static_cast<float>(selBox.x1) + ss;
+        y1 = static_cast<float>(selBox.y1) + ss;
+        z1 = static_cast<float>(selBox.z1) + ss;
+    } else {
+        // Fallback to full block
+        x0 = static_cast<float>(bx) - ss;
+        y0 = static_cast<float>(by) - ss;
+        z0 = static_cast<float>(bz) - ss;
+        x1 = static_cast<float>(bx) + 1.0f + ss;
+        y1 = static_cast<float>(by) + 1.0f + ss;
+        z1 = static_cast<float>(bz) + 1.0f + ss;
+    }
 
     Tesselator& t = Tesselator::getInstance();
 

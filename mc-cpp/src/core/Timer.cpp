@@ -37,11 +37,17 @@ void Timer::advanceTime() {
     long sysTime = getSystemTime();
     long sysDiff = sysTime - lastSyncSysClock;
     long hrTime = static_cast<long>(getTime());
-    double adjust = static_cast<double>(sysDiff) / static_cast<double>(hrTime - lastSyncHRClock);
+    long hrDiff = hrTime - lastSyncHRClock;
+    double adjust = 1.0;
 
-    // Clamp adjustment factor
-    adjust = std::clamp(adjust, 0.8, 1.2);
-    timeSyncAdjust += (adjust - timeSyncAdjust) * 0.2;
+    // Avoid division by zero on first frame
+    if (hrDiff > 0) {
+        adjust = static_cast<double>(sysDiff) / static_cast<double>(hrDiff);
+
+        // Clamp adjustment factor
+        adjust = std::clamp(adjust, 0.8, 1.2);
+        timeSyncAdjust += (adjust - timeSyncAdjust) * 0.2;
+    }
 
     lastSyncSysClock = sysTime;
     lastSyncHRClock = hrTime;

@@ -119,6 +119,9 @@ public:
     void removeListener(LevelListener* listener);
     void notifyBlockChanged(int x, int y, int z);
 
+    // Block updates (matching Java Level.updateNeighborsAt)
+    void notifyNeighborsAt(int x, int y, int z, int tileId);
+
     // World generation
     void generateFlatWorld();
     void generateTerrain();

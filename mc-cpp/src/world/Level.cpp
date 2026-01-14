@@ -72,6 +72,9 @@ bool Level::setTile(int x, int y, int z, int tileId) {
     // Update lighting
     updateLightAt(x, y, z);
 
+    // Notify neighboring blocks of the change (matching Java Level.updateNeighborsAt)
+    notifyNeighborsAt(x, y, z, tileId);
+
     return true;
 }
 
@@ -197,14 +200,41 @@ HitResult Level::clip(const Vec3& start, const Vec3& end, bool stopOnLiquid) con
     for (int i = 0; i < 200 && traveled < maxDist; i++) {
         // Check current block
         Tile* tile = getTileAt(blockX, blockY, blockZ);
-        if (tile && (tile->solid || (stopOnLiquid && tile->renderShape == TileShape::LIQUID))) {
-            // Calculate exact hit position
-            Vec3 hitPos(
-                start.x + dx * traveled,
-                start.y + dy * traveled,
-                start.z + dz * traveled
-            );
-            return HitResult(blockX, blockY, blockZ, face, hitPos);
+        if (tile) {
+            // For solid blocks, always hit
+            if (tile->solid || (stopOnLiquid && tile->renderShape == TileShape::LIQUID)) {
+                Vec3 hitPos(
+                    start.x + dx * traveled,
+                    start.y + dy * traveled,
+                    start.z + dz * traveled
+                );
+                return HitResult(blockX, blockY, blockZ, face, hitPos);
+            }
+
+            // For non-solid blocks with selection boxes (like torches, flowers),
+            // check if the ray intersects the selection box
+            AABB selBox = tile->getSelectionBox(const_cast<Level*>(this), blockX, blockY, blockZ);
+
+            // Check if selection box is valid (non-empty)
+            if (selBox.x1 > selBox.x0 && selBox.y1 > selBox.y0 && selBox.z1 > selBox.z0) {
+                // Check ray intersection with the selection box
+                auto clipResult = selBox.clip(start, end);
+                if (clipResult.has_value()) {
+                    // Determine which face was hit based on the hit position
+                    Vec3 hitPos = clipResult.value();
+                    double epsilon = 0.001;
+
+                    Direction hitFace = Direction::UP;
+                    if (std::abs(hitPos.y - selBox.y1) < epsilon) hitFace = Direction::UP;
+                    else if (std::abs(hitPos.y - selBox.y0) < epsilon) hitFace = Direction::DOWN;
+                    else if (std::abs(hitPos.z - selBox.z0) < epsilon) hitFace = Direction::NORTH;
+                    else if (std::abs(hitPos.z - selBox.z1) < epsilon) hitFace = Direction::SOUTH;
+                    else if (std::abs(hitPos.x - selBox.x0) < epsilon) hitFace = Direction::WEST;
+                    else if (std::abs(hitPos.x - selBox.x1) < epsilon) hitFace = Direction::EAST;
+
+                    return HitResult(blockX, blockY, blockZ, hitFace, hitPos);
+                }
+            }
         }
 
         // Step to next block
@@ -480,6 +510,29 @@ void Level::removeListener(LevelListener* listener) {
 void Level::notifyBlockChanged(int x, int y, int z) {
     for (auto* listener : listeners) {
         listener->tileChanged(x, y, z);
+    }
+}
+
+void Level::notifyNeighborsAt(int x, int y, int z, int tileId) {
+    // Matching Java Level.updateNeighborsAt - notify all 6 adjacent blocks
+    // This is called when a block changes, so neighbors can react (e.g., torch falls)
+    static const int offsets[6][3] = {
+        {-1, 0, 0}, {1, 0, 0},  // West, East
+        {0, -1, 0}, {0, 1, 0},  // Down, Up
+        {0, 0, -1}, {0, 0, 1}   // North, South
+    };
+
+    for (int i = 0; i < 6; i++) {
+        int nx = x + offsets[i][0];
+        int ny = y + offsets[i][1];
+        int nz = z + offsets[i][2];
+
+        if (!isInBounds(nx, ny, nz)) continue;
+
+        Tile* neighbor = getTileAt(nx, ny, nz);
+        if (neighbor) {
+            neighbor->onNeighborChange(this, nx, ny, nz, tileId);
+        }
     }
 }
 

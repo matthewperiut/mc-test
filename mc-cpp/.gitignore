@@ -1,0 +1,58 @@
+# CLion IDE
+.idea/
+.cache/
+*.iml
+*.iws
+*.ipr
+
+# CMake build directories
+build/
+cmake-build-debug/
+cmake-build-release/
+cmake-build-relwithdebinfo/
+cmake-build-minsizerel/
+
+# Compiled objects and binaries
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+
+# Executables
+*.exe
+MinecraftCpp
+
+# CMake cache and generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+compile_commands.json
+
+# Build artifacts
+Testing/
+
+# OS-specific
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Editor temporary files
+*~
+*.swp
+*.swo
+.vscode/
+
+# Generated files
+*.log
+*.ninja
+.ninja_deps
+.ninja_log

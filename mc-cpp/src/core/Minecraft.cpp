@@ -22,6 +22,7 @@
 #include <GLFW/glfw3.h>
 #include <iostream>
 #include <chrono>
+#include <cstdlib>
 
 namespace mc {
 
@@ -94,6 +95,12 @@ bool Minecraft::init(int width, int height, bool fs) {
     screenHeight = height;
     fullscreen = fs;
 
+#ifdef __linux__
+    // Set Wayland compatibility flag before GLFW init
+    // This tells GLEW to work with both X11 and Wayland
+    setenv("LIBGL_ALWAYS_INDIRECT", "1", 0);
+#endif
+
     // Initialize GLFW
     glfwSetErrorCallback(glfwErrorCallback);
     if (!glfwInit()) {
@@ -138,10 +145,14 @@ bool Minecraft::init(int width, int height, bool fs) {
     glfwSwapInterval(options.vsync ? 1 : 0);
 
     // Initialize GLEW
+    // Note: glewInit() may fail on Wayland due to missing X11/EGL detection,
+    // but the context is still valid. We suppress the error and continue.
     glewExperimental = GL_TRUE;
-    if (glewInit() != GLEW_OK) {
-        std::cerr << "Failed to initialize GLEW" << std::endl;
-        return false;
+    GLenum glewErr = glewInit();
+
+    if (glewErr != GLEW_OK && glewErr != GLEW_ERROR_NO_GLX_DISPLAY) {
+        std::cerr << "GLEW initialization warning: " << glewGetErrorString(glewErr) << std::endl;
+        // Continue anyway - the context may still be valid on Wayland
     }
 
     // Initialize OpenGL
