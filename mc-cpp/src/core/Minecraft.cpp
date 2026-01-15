@@ -157,20 +157,9 @@ bool Minecraft::init(int width, int height, bool fs) {
 #ifndef MC_RENDERER_METAL
     // Apply vsync setting from options (OpenGL)
     glfwSwapInterval(options.vsync ? 1 : 0);
-
-    // Initialize GLEW
-    // Note: glewInit() may fail on Wayland due to missing X11/EGL detection,
-    // but the context is still valid. We suppress the error and continue.
-    glewExperimental = GL_TRUE;
-    GLenum glewErr = glewInit();
-
-    if (glewErr != GLEW_OK && glewErr != GLEW_ERROR_NO_GLX_DISPLAY) {
-        std::cerr << "GLEW initialization warning: " << glewGetErrorString(glewErr) << std::endl;
-        // Continue anyway - the context may still be valid on Wayland
-    }
 #endif
 
-    // Initialize render device
+    // Initialize render device (handles GLEW init for OpenGL)
     RenderDevice::setInstance(createRenderDevice());
     if (!RenderDevice::get().init(window)) {
         std::cerr << "Failed to initialize render device" << std::endl;

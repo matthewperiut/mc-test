@@ -14,11 +14,19 @@ GLRenderDevice::~GLRenderDevice() {
 }
 
 bool GLRenderDevice::init(void* windowHandle) {
-    // GLEW should already be initialized by the time we get here
-    // (initialized in Minecraft::init after GLFW context creation)
-    if (glewInit() != GLEW_OK) {
-        std::cerr << "Failed to initialize GLEW" << std::endl;
+    // Initialize GLEW
+    // Note: glewInit() may fail on Wayland due to missing X11/EGL detection,
+    // but the context is still valid. We suppress that specific error and continue.
+    glewExperimental = GL_TRUE;
+    GLenum glewErr = glewInit();
+
+    if (glewErr != GLEW_OK && glewErr != GLEW_ERROR_NO_GLX_DISPLAY) {
+        std::cerr << "GLEW initialization error: " << glewGetErrorString(glewErr) << std::endl;
         return false;
+    }
+
+    if (glewErr == GLEW_ERROR_NO_GLX_DISPLAY) {
+        std::cerr << "GLEW warning: No GLX display (Wayland?), but context may be valid" << std::endl;
     }
 
     initialized = true;
