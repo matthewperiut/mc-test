@@ -32,22 +32,25 @@ void Textures::destroy() {
     textureInfo.clear();
 }
 
-GLuint Textures::loadTexture(const std::string& path) {
+GLuint Textures::loadTexture(const std::string& path, bool useMipmaps) {
+    // Include mipmap setting in cache key to allow same texture with different settings
+    std::string cacheKey = path + (useMipmaps ? ":mip" : ":nomip");
+
     // Check cache first
-    auto it = textureCache.find(path);
+    auto it = textureCache.find(cacheKey);
     if (it != textureCache.end()) {
         return it->second;
     }
 
     // Load new texture
-    GLuint textureId = loadTextureFromFile(path);
+    GLuint textureId = loadTextureFromFile(path, useMipmaps);
     if (textureId) {
-        textureCache[path] = textureId;
+        textureCache[cacheKey] = textureId;
     }
     return textureId;
 }
 
-GLuint Textures::loadTextureFromFile(const std::string& path) {
+GLuint Textures::loadTextureFromFile(const std::string& path, bool useMipmaps) {
     int width, height, channels;
     stbi_set_flip_vertically_on_load(false);  // Minecraft textures are top-down
 
@@ -62,13 +65,22 @@ GLuint Textures::loadTextureFromFile(const std::string& path) {
     glBindTexture(GL_TEXTURE_2D, textureId);
 
     // Minecraft uses nearest neighbor filtering for that pixelated look
-    // No mipmaps - they cause black/transparent edge artifacts with alpha textures
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    if (useMipmaps) {
+        // Use mipmaps for terrain - helps with distant block rendering
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_LINEAR);
+    } else {
+        // No mipmaps for mob/entity textures - avoids black/transparent edge artifacts
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    }
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+
+    if (useMipmaps) {
+        glGenerateMipmap(GL_TEXTURE_2D);
+    }
 
     glBindTexture(GL_TEXTURE_2D, 0);
     stbi_image_free(data);
@@ -83,8 +95,8 @@ void Textures::bind(GLuint textureId, int unit) {
     glBindTexture(GL_TEXTURE_2D, textureId);
 }
 
-void Textures::bind(const std::string& path, int unit) {
-    GLuint textureId = loadTexture(path);
+void Textures::bind(const std::string& path, int unit, bool useMipmaps) {
+    GLuint textureId = loadTexture(path, useMipmaps);
     bind(textureId, unit);
 }
 

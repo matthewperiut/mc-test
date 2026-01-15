@@ -15,11 +15,12 @@ public:
     void destroy();
 
     // Load a texture from file, returns OpenGL texture ID
-    GLuint loadTexture(const std::string& path);
+    // useMipmaps: true for terrain textures, false for mob/entity textures (avoids edge artifacts)
+    GLuint loadTexture(const std::string& path, bool useMipmaps = true);
 
     // Bind texture to a texture unit
     void bind(GLuint textureId, int unit = 0);
-    void bind(const std::string& path, int unit = 0);
+    void bind(const std::string& path, int unit = 0, bool useMipmaps = true);
     bool bindTexture(const std::string& path, int unit = 0);  // Returns false if texture not found
     void unbind(int unit = 0);
 
@@ -49,7 +50,7 @@ private:
     std::unordered_map<std::string, GLuint> textureCache;
     std::unordered_map<GLuint, TextureInfo> textureInfo;
 
-    GLuint loadTextureFromFile(const std::string& path);
+    GLuint loadTextureFromFile(const std::string& path, bool useMipmaps);
 };
 
 } // namespace mc

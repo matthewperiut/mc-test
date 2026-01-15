@@ -88,11 +88,11 @@ void ParticleEngine::render(Entity* player, float partialTick) {
 
         // Bind appropriate texture
         if (tt == MISC_TEXTURE) {
-            Textures::getInstance().bind("resources/particles.png");
+            Textures::getInstance().bind("resources/particles.png", 0, false);  // No mipmaps for particles
         } else if (tt == TERRAIN_TEXTURE) {
-            Textures::getInstance().bind("resources/terrain.png");
+            Textures::getInstance().bind("resources/terrain.png");  // Terrain uses mipmaps
         } else if (tt == ITEM_TEXTURE) {
-            Textures::getInstance().bind("resources/gui/items.png");
+            Textures::getInstance().bind("resources/gui/items.png", 0, false);  // No mipmaps for items
         }
 
         t.begin(GL_QUADS);

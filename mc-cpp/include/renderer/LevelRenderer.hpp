@@ -81,6 +81,10 @@ public:
     // Get chunk at position
     Chunk* getChunkAt(int x, int y, int z);
 
+    // Sky color calculation (public for fog blending in GameRenderer)
+    void getSkyColor(float timeOfDay, float& r, float& g, float& b) const;
+    void getCloudColor(float partialTick, float& r, float& g, float& b) const;
+
 private:
     void createChunks();
     void disposeChunks();
@@ -93,7 +97,6 @@ private:
     void buildSkyVAO();
     void buildDarkVAO();
     float getTimeOfDay() const;
-    void getSkyColor(float timeOfDay, float& r, float& g, float& b) const;
     float* getSunriseColor(float timeOfDay) const;
     float getStarBrightness(float timeOfDay) const;
 

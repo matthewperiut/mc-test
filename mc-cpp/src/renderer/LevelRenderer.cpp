@@ -542,8 +542,8 @@ void LevelRenderer::renderSky(float partialTick) {
     ShaderManager::getInstance().updateMatrices();
     ShaderManager::getInstance().setUseTexture(true);
 
-    // Render sun (size reduced from 30 to 20 for better appearance)
-    float ss = 20.0f;
+    // Render sun (Java size: 30.0f)
+    float ss = 30.0f;
     if (Textures::getInstance().bindTexture("resources/terrain/sun.png")) {
         t.begin(GL_QUADS);
         t.color(1.0f, 1.0f, 1.0f, 1.0f);
@@ -554,8 +554,8 @@ void LevelRenderer::renderSky(float partialTick) {
         t.end();
     }
 
-    // Render moon
-    ss = 15.0f;
+    // Render moon (Java size: 20.0f)
+    ss = 20.0f;
     if (Textures::getInstance().bindTexture("resources/terrain/moon.png")) {
         t.begin(GL_QUADS);
         t.color(1.0f, 1.0f, 1.0f, 1.0f);
@@ -654,11 +654,23 @@ float* LevelRenderer::getSunriseColor(float timeOfDay) const {
 }
 
 float LevelRenderer::getStarBrightness(float timeOfDay) const {
-    float cos = std::cos(timeOfDay * 3.14159265f * 2.0f);
-    if (cos < 0.0f) {
-        return -cos;
-    }
-    return 0.0f;
+    // Java formula: brightness = 1.0 - (cos * 2.0 + 0.75), then squared * 0.5
+    float cosVal = std::cos(timeOfDay * 3.14159265f * 2.0f);
+    float brightness = 1.0f - (cosVal * 2.0f + 0.75f);
+    brightness = std::max(0.0f, std::min(1.0f, brightness));
+    return brightness * brightness * 0.5f;
+}
+
+void LevelRenderer::getCloudColor(float partialTick, float& r, float& g, float& b) const {
+    // Match Java Level.getCloudColor() (Level.java:1179-1197)
+    float timeOfDay = getTimeOfDay();
+    float brightness = std::cos(timeOfDay * 3.14159265f * 2.0f) * 2.0f + 0.5f;
+    brightness = std::max(0.0f, std::min(1.0f, brightness));
+
+    // Base cloud color (white-ish) with time-based modulation
+    r = 1.0f * (brightness * 0.9f + 0.1f);
+    g = 1.0f * (brightness * 0.9f + 0.1f);
+    b = 1.0f * (brightness * 0.85f + 0.15f);
 }
 
 void LevelRenderer::renderClouds(float partialTick) {
@@ -1005,8 +1017,8 @@ void LevelRenderer::renderEntities(float partialTick) {
         float flapSpd = chicken->oFlapSpeed + (chicken->flapSpeed - chicken->oFlapSpeed) * partialTick;
         float bob = (Mth::sin(flapPos) + 1.0f) * flapSpd;
 
-        // Bind chicken texture
-        Textures::getInstance().bind("resources/mob/chicken.png");
+        // Bind chicken texture (no mipmaps to avoid edge artifacts)
+        Textures::getInstance().bind("resources/mob/chicken.png", 0, false);
 
         MatrixStack::modelview().push();
         MatrixStack::modelview().translate(static_cast<float>(cx), static_cast<float>(cy), static_cast<float>(cz));
