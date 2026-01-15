@@ -352,6 +352,11 @@ void Minecraft::tick() {
 }
 
 void Minecraft::render(float partialTick) {
+    // Update audio listener position/orientation based on player
+    if (player) {
+        SoundEngine::getInstance().update(player, partialTick);
+    }
+
     // Update game mode render state (for break progress)
     if (gameMode) {
         gameMode->render(partialTick);
