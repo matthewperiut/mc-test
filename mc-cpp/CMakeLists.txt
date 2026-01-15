@@ -9,7 +9,24 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 find_package(OpenGL REQUIRED)
 find_package(glfw3 3.3 REQUIRED)
 find_package(GLEW REQUIRED)
-find_package(OpenAL REQUIRED)
+# On macOS, require OpenAL Soft (Apple's built-in OpenAL is deprecated and has audio bugs)
+if(APPLE)
+    find_path(OPENAL_INCLUDE_DIR AL/al.h
+        PATHS /opt/homebrew/opt/openal-soft/include /usr/local/opt/openal-soft/include
+        NO_DEFAULT_PATH
+    )
+    find_library(OPENAL_LIBRARY
+        NAMES openal OpenAL al
+        PATHS /opt/homebrew/opt/openal-soft/lib /usr/local/opt/openal-soft/lib
+        NO_DEFAULT_PATH
+    )
+    if(NOT OPENAL_INCLUDE_DIR OR NOT OPENAL_LIBRARY)
+        message(FATAL_ERROR "OpenAL Soft is required on macOS. Install with: brew install openal-soft")
+    endif()
+    message(STATUS "Using OpenAL Soft: ${OPENAL_LIBRARY}")
+else()
+    find_package(OpenAL REQUIRED)
+endif()
 find_package(glm REQUIRED)
 
 # Find stb_image for texture loading (header-only)

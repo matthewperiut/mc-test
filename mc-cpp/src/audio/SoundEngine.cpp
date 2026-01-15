@@ -204,36 +204,6 @@ static std::vector<short> convertStereoToMono(const short* stereoData, int sampl
     return monoData;
 }
 
-#ifdef __APPLE__
-// Resample audio to target sample rate (44100 Hz) for macOS compatibility
-// Apple's OpenAL has issues with non-standard sample rates causing distortion
-static std::vector<short> resampleAudio(const short* data, int samples, int srcRate, int targetRate) {
-    if (srcRate == targetRate) {
-        return std::vector<short>(data, data + samples);
-    }
-
-    double ratio = static_cast<double>(targetRate) / srcRate;
-    int newSamples = static_cast<int>(samples * ratio);
-    std::vector<short> resampled(newSamples);
-
-    for (int i = 0; i < newSamples; i++) {
-        double srcPos = i / ratio;
-        int srcIndex = static_cast<int>(srcPos);
-        double frac = srcPos - srcIndex;
-
-        if (srcIndex + 1 < samples) {
-            // Linear interpolation between samples
-            resampled[i] = static_cast<short>(
-                data[srcIndex] * (1.0 - frac) + data[srcIndex + 1] * frac
-            );
-        } else {
-            resampled[i] = data[srcIndex < samples ? srcIndex : samples - 1];
-        }
-    }
-    return resampled;
-}
-#endif
-
 SoundBuffer* SoundEngine::loadOgg(const std::string& path) {
     int channels, sampleRate;
     short* output;
@@ -254,17 +224,6 @@ SoundBuffer* SoundEngine::loadOgg(const std::string& path) {
     }
 
     free(output);
-
-#ifdef __APPLE__
-    // Resample to 44100 Hz on macOS to avoid distortion
-    // Apple's OpenAL has issues with non-standard sample rates
-    const int TARGET_SAMPLE_RATE = 44100;
-    if (sampleRate != TARGET_SAMPLE_RATE) {
-        audioData = resampleAudio(audioData.data(), static_cast<int>(audioData.size()), sampleRate, TARGET_SAMPLE_RATE);
-        samples = static_cast<int>(audioData.size());
-        sampleRate = TARGET_SAMPLE_RATE;
-    }
-#endif
 
     // Create buffer - always mono for 3D audio
     ALuint buffer;
@@ -366,29 +325,16 @@ SoundBuffer* SoundEngine::loadWav(const std::string& path) {
                         }
                     }
 
-                    int finalSampleRate = sampleRate;
-
-#ifdef __APPLE__
-                    // Resample to 44100 Hz on macOS to avoid distortion
-                    const int TARGET_SAMPLE_RATE = 44100;
-                    if (finalSampleRate != TARGET_SAMPLE_RATE) {
-                        audioData = resampleAudio(audioData.data(), static_cast<int>(audioData.size()),
-                                                  finalSampleRate, TARGET_SAMPLE_RATE);
-                        samples = static_cast<int>(audioData.size());
-                        finalSampleRate = TARGET_SAMPLE_RATE;
-                    }
-#endif
-
                     // Create buffer - always mono 16-bit for 3D audio
                     ALuint buffer;
                     alGenBuffers(1, &buffer);
                     alBufferData(buffer, AL_FORMAT_MONO16, audioData.data(),
-                                 static_cast<ALsizei>(audioData.size() * sizeof(short)), finalSampleRate);
+                                 static_cast<ALsizei>(audioData.size() * sizeof(short)), sampleRate);
 
                     SoundBuffer soundBuffer;
                     soundBuffer.buffer = buffer;
                     soundBuffer.channels = 1;  // Always mono now
-                    soundBuffer.sampleRate = finalSampleRate;
+                    soundBuffer.sampleRate = sampleRate;
 
                     soundCache[path] = soundBuffer;
                     return &soundCache[path];
