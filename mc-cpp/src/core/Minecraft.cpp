@@ -257,7 +257,6 @@ void Minecraft::run() {
 
     while (running && !glfwWindowShouldClose(window)) {
         auto currentTime = std::chrono::high_resolution_clock::now();
-        auto deltaTime = std::chrono::duration<double>(currentTime - lastTime).count();
         lastTime = currentTime;
 
         // Poll events
@@ -565,7 +564,7 @@ void Minecraft::onKeyPress(int key, int scancode, int action, int mods) {
     }
 
     // Forward to player
-    if (player && action == GLFW_PRESS || action == GLFW_RELEASE) {
+    if (player && (action == GLFW_PRESS || action == GLFW_RELEASE)) {
         player->setKey(key, action == GLFW_PRESS);
     }
 }
