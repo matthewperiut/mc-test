@@ -1,31 +1,30 @@
-#version 330 core
+#version 450 core
 
-in vec2 vTexCoord;
-in vec4 vColor;
-in vec3 vNormal;
-in vec3 vViewNormal;
-in vec2 vLight;  // skyLight, blockLight (0-15)
-in float vFogDepth;
+layout(location = 0) in vec2 vTexCoord;
+layout(location = 1) in vec4 vColor;
+layout(location = 2) in vec3 vNormal;
+layout(location = 3) in vec3 vViewNormal;
+layout(location = 4) in vec2 vLight;  // skyLight, blockLight (0-15)
+layout(location = 5) in float vFogDepth;
 
-uniform sampler2D uTexture;
-uniform vec3 uFogColor;
-uniform float uFogStart;
-uniform float uFogEnd;
-uniform float uAlphaTest;
-uniform int uUseTexture;
+layout(binding = 1) uniform sampler2D uTexture;
 
-// Lighting uniforms (matching Java Lighting.turnOn)
-uniform int uEnableLighting;
-uniform vec3 uLightDir0;  // First light direction in view space
-uniform vec3 uLightDir1;  // Second light direction in view space
-uniform float uAmbient;   // Ambient light level (0.4 in Java)
-uniform float uDiffuse;   // Diffuse light intensity (0.6 in Java)
-uniform float uBrightness; // World brightness at player position (for hand)
+layout(binding = 2) uniform FragUniforms {
+    vec3 uFogColor;
+    float uFogStart;
+    float uFogEnd;
+    float uAlphaTest;
+    int uUseTexture;
+    int uEnableLighting;
+    vec3 uLightDir0;
+    vec3 uLightDir1;
+    float uAmbient;
+    float uDiffuse;
+    float uBrightness;
+    float uSkyBrightness;
+};
 
-// Sky brightness for world lighting (varies with time of day)
-uniform float uSkyBrightness;  // 0-1 based on time of day
-
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
 
 // Brightness ramp from Java Dimension.updateLightRamp()
 float getBrightnessFromLight(float lightLevel) {

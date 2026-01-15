@@ -18,8 +18,14 @@
 #include "item/Item.hpp"
 #include "phys/Vec3.hpp"
 #include "phys/AABB.hpp"
+#include "renderer/backend/RenderDevice.hpp"
+#ifdef MC_RENDERER_METAL
+#include "renderer/backend/metal/MTLRenderDevice.hpp"
+#endif
 
+#ifndef MC_RENDERER_METAL
 #include <GL/glew.h>
+#endif
 #include <GLFW/glfw3.h>
 #include <iostream>
 #include <chrono>
@@ -109,12 +115,16 @@ bool Minecraft::init(int width, int height, bool fs) {
         return false;
     }
 
-    // Create window with OpenGL 3.3 core profile
+    // Create window - Metal needs GLFW_NO_API, OpenGL needs context hints
+#ifdef MC_RENDERER_METAL
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+#else
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-#ifdef __APPLE__
+    #ifdef __APPLE__
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+    #endif
 #endif
 
     GLFWmonitor* monitor = fullscreen ? glfwGetPrimaryMonitor() : nullptr;
@@ -126,7 +136,9 @@ bool Minecraft::init(int width, int height, bool fs) {
         return false;
     }
 
+#ifndef MC_RENDERER_METAL
     glfwMakeContextCurrent(window);
+#endif
     glfwSetWindowUserPointer(window, this);
 
     // Get actual framebuffer size (important for HiDPI displays)
@@ -142,7 +154,8 @@ bool Minecraft::init(int width, int height, bool fs) {
     // Load options
     options.load("options.txt");
 
-    // Apply vsync setting from options
+#ifndef MC_RENDERER_METAL
+    // Apply vsync setting from options (OpenGL)
     glfwSwapInterval(options.vsync ? 1 : 0);
 
     // Initialize GLEW
@@ -155,8 +168,23 @@ bool Minecraft::init(int width, int height, bool fs) {
         std::cerr << "GLEW initialization warning: " << glewGetErrorString(glewErr) << std::endl;
         // Continue anyway - the context may still be valid on Wayland
     }
+#endif
 
-    // Initialize OpenGL
+    // Initialize render device
+    RenderDevice::setInstance(createRenderDevice());
+    if (!RenderDevice::get().init(window)) {
+        std::cerr << "Failed to initialize render device" << std::endl;
+        glfwDestroyWindow(window);
+        glfwTerminate();
+        return false;
+    }
+
+#ifdef MC_RENDERER_METAL
+    // Apply vsync setting from options (Metal)
+    RenderDevice::get().setVsync(options.vsync);
+#endif
+
+    // Initialize rendering state
     initGL();
 
     // Initialize mouse handler
@@ -191,24 +219,27 @@ bool Minecraft::init(int width, int height, bool fs) {
     inGame = true;
 
     std::cout << "Minecraft C++ initialized successfully!" << std::endl;
+#ifdef MC_RENDERER_METAL
+    std::cout << "Using Metal rendering backend" << std::endl;
+#else
     std::cout << "OpenGL Version: " << glGetString(GL_VERSION) << std::endl;
+#endif
 
     return true;
 }
 
 void Minecraft::initGL() {
+    auto& device = RenderDevice::get();
+
     // Use framebuffer size for viewport (HiDPI support)
-    glViewport(0, 0, framebufferWidth, framebufferHeight);
+    device.setViewport(0, 0, framebufferWidth, framebufferHeight);
 
-    glEnable(GL_DEPTH_TEST);
-    glDepthFunc(GL_LEQUAL);
+    device.setDepthTest(true);
+    device.setDepthFunc(CompareFunc::LessEqual);
 
-    glEnable(GL_CULL_FACE);
-    glCullFace(GL_BACK);
+    device.setCullFace(true, CullMode::Back);
 
-    // Note: GL_TEXTURE_2D is always enabled in core profile (no need to call glEnable)
-
-    glClearColor(0.5f, 0.8f, 1.0f, 1.0f);
+    device.setClearColor(0.5f, 0.8f, 1.0f, 1.0f);
 
     // Initialize shaders
     ShaderManager::getInstance().init();
@@ -266,6 +297,7 @@ void Minecraft::createLevel(int width, int height, int depth) {
 
 void Minecraft::run() {
     auto lastTime = std::chrono::high_resolution_clock::now();
+    auto& device = RenderDevice::get();
 
     while (running && !glfwWindowShouldClose(window)) {
         auto currentTime = std::chrono::high_resolution_clock::now();
@@ -285,11 +317,20 @@ void Minecraft::run() {
             tick();
         }
 
+        // Begin frame (Metal needs this for command buffer setup)
+        device.beginFrame();
+
         // Render (freeze partialTick when paused to prevent jitter)
         render(paused ? 0.0f : timer.partialTick);
 
-        // Swap buffers
+        // End frame and present
+        device.endFrame();
+        device.present();
+
+#ifndef MC_RENDERER_METAL
+        // Swap buffers (OpenGL only - Metal presents in device.present())
         glfwSwapBuffers(window);
+#endif
 
         // Update FPS counter
         updateFps();
@@ -649,8 +690,13 @@ void Minecraft::onResize(int width, int height) {
     // Get the window size for UI calculations
     glfwGetWindowSize(window, &screenWidth, &screenHeight);
 
-    // Use framebuffer size for OpenGL viewport
-    glViewport(0, 0, framebufferWidth, framebufferHeight);
+    // Update viewport
+    RenderDevice::get().setViewport(0, 0, framebufferWidth, framebufferHeight);
+
+#ifdef MC_RENDERER_METAL
+    // Metal needs to recreate drawable on resize
+    static_cast<MTLRenderDevice&>(RenderDevice::get()).handleResize(framebufferWidth, framebufferHeight);
+#endif
 
     if (gameRenderer) {
         gameRenderer->resize(framebufferWidth, framebufferHeight);
@@ -751,6 +797,11 @@ void Minecraft::shutdown() {
     Tesselator::getInstance().destroy();
     Item::destroyItems();
     Tile::destroyTiles();
+
+    // Shutdown render device
+    if (RenderDevice::hasInstance()) {
+        RenderDevice::get().shutdown();
+    }
 
     // Destroy window
     if (window) {

@@ -1,4 +1,5 @@
 #include "renderer/Tesselator.hpp"
+#include "renderer/backend/RenderDevice.hpp"
 #include <cstring>
 #include <stdexcept>
 #include <iostream>
@@ -18,10 +19,16 @@ Tesselator& Tesselator::getInstance() {
 }
 
 Tesselator::Tesselator()
+#ifdef MC_RENDERER_METAL
+    : vertexBuffer(nullptr)
+    , indexBuffer(nullptr)
+    , vaoInitialized(false)
+#else
     : vao(0)
     , vbo(0)
     , ebo(0)
     , vaoInitialized(false)
+#endif
     , p(0)
     , vertices(0)
     , count(0)
@@ -51,15 +58,22 @@ Tesselator::~Tesselator() {
 void Tesselator::init() {
     if (vaoInitialized) return;
 
+#ifdef MC_RENDERER_METAL
+    auto& device = RenderDevice::get();
+    vertexBuffer = device.createVertexBuffer();
+    indexBuffer = device.createIndexBuffer();
+#else
     glGenVertexArrays(1, &vao);
     glGenBuffers(1, &vbo);
     glGenBuffers(1, &ebo);
 
     setupVAO();
+#endif
     vaoInitialized = true;
 }
 
 void Tesselator::setupVAO() {
+#ifndef MC_RENDERER_METAL
     glBindVertexArray(vao);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
 
@@ -86,14 +100,20 @@ void Tesselator::setupVAO() {
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
 
     glBindVertexArray(0);
+#endif
 }
 
 void Tesselator::destroy() {
     if (vaoInitialized) {
+#ifdef MC_RENDERER_METAL
+        vertexBuffer.reset();
+        indexBuffer.reset();
+#else
         glDeleteVertexArrays(1, &vao);
         glDeleteBuffers(1, &vbo);
         glDeleteBuffers(1, &ebo);
         vao = vbo = ebo = 0;
+#endif
         vaoInitialized = false;
     }
     array.clear();
@@ -152,6 +172,45 @@ void Tesselator::draw() {
         init();
     }
 
+#ifdef MC_RENDERER_METAL
+    auto& device = RenderDevice::get();
+
+    // Upload vertex data
+    vertexBuffer->upload(array.data(), p * sizeof(int), BufferUsage::Stream);
+    vertexBuffer->bind();
+    device.setupVertexAttributes();
+
+    if (mode == GL_QUADS) {
+        // Convert quads to triangles using index buffer
+        buildQuadIndices();
+        indexBuffer->upload(indices.data(), indices.size(), BufferUsage::Stream);
+        indexBuffer->bind();
+        device.drawIndexed(PrimitiveType::Triangles, indices.size());
+    } else if (mode == GL_TRIANGLE_FAN) {
+        // Convert triangle fan to triangles
+        if (vertices >= 3) {
+            indices.clear();
+            for (int i = 1; i < vertices - 1; i++) {
+                indices.push_back(0);
+                indices.push_back(i);
+                indices.push_back(i + 1);
+            }
+            indexBuffer->upload(indices.data(), indices.size(), BufferUsage::Stream);
+            indexBuffer->bind();
+            device.drawIndexed(PrimitiveType::Triangles, indices.size());
+        }
+    } else if (mode == GL_TRIANGLES) {
+        device.draw(PrimitiveType::Triangles, vertices);
+    } else if (mode == GL_LINES) {
+        device.draw(PrimitiveType::Lines, vertices);
+    } else if (mode == GL_LINE_STRIP) {
+        device.draw(PrimitiveType::LineStrip, vertices);
+    } else if (mode == GL_POINTS) {
+        device.draw(PrimitiveType::Points, vertices);
+    }
+
+    vertexBuffer->unbind();
+#else
     glBindVertexArray(vao);
 
     // Upload vertex data
@@ -185,6 +244,7 @@ void Tesselator::draw() {
     }
 
     glBindVertexArray(0);
+#endif
 }
 
 void Tesselator::clear() {

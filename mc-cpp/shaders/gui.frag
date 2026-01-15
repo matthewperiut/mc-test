@@ -1,15 +1,18 @@
-#version 330 core
+#version 450 core
 
-in vec2 vTexCoord;
-in vec4 vColor;
+layout(location = 0) in vec2 vTexCoord;
+layout(location = 1) in vec4 vColor;
 
-uniform sampler2D uTexture;
-uniform int uUseTexture;
-uniform vec4 uColor;
-uniform int uUseUniformColor;
-uniform float uAlphaTest;
+layout(binding = 1) uniform sampler2D uTexture;
 
-out vec4 fragColor;
+layout(binding = 2) uniform FragUniforms {
+    int uUseTexture;
+    vec4 uColor;
+    int uUseUniformColor;
+    float uAlphaTest;
+};
+
+layout(location = 0) out vec4 fragColor;
 
 void main() {
     vec4 baseColor = (uUseUniformColor != 0) ? uColor : vColor;

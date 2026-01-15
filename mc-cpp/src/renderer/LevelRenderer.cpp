@@ -11,7 +11,10 @@
 #include "world/tile/Tile.hpp"
 #include "item/Item.hpp"
 #include "util/Mth.hpp"
+#include "renderer/backend/RenderDevice.hpp"
+#ifndef MC_RENDERER_METAL
 #include <GL/glew.h>
+#endif
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -46,6 +49,7 @@ LevelRenderer::~LevelRenderer() {
 }
 
 void LevelRenderer::disposeSkyVAOs() {
+#ifndef MC_RENDERER_METAL
     if (starVAO) { glDeleteVertexArrays(1, &starVAO); starVAO = 0; }
     if (starVBO) { glDeleteBuffers(1, &starVBO); starVBO = 0; }
     if (starEBO) { glDeleteBuffers(1, &starEBO); starEBO = 0; }
@@ -55,6 +59,7 @@ void LevelRenderer::disposeSkyVAOs() {
     if (darkVAO) { glDeleteVertexArrays(1, &darkVAO); darkVAO = 0; }
     if (darkVBO) { glDeleteBuffers(1, &darkVBO); darkVBO = 0; }
     if (darkEBO) { glDeleteBuffers(1, &darkEBO); darkEBO = 0; }
+#endif
     skyVAOsInitialized = false;
 }
 
@@ -254,6 +259,7 @@ void LevelRenderer::render(float /*partialTick*/, int pass) {
     }
 }
 
+#ifndef MC_RENDERER_METAL
 // Helper to setup a simple position-only VAO for sky geometry
 static void setupSkyVAO(GLuint vao, GLuint vbo, GLuint ebo,
                         const std::vector<float>& vertices,
@@ -272,10 +278,12 @@ static void setupSkyVAO(GLuint vao, GLuint vbo, GLuint ebo,
 
     glBindVertexArray(0);
 }
+#endif
 
 void LevelRenderer::initSkyVAOs() {
     if (skyVAOsInitialized) return;
 
+#ifndef MC_RENDERER_METAL
     // Generate VAOs/VBOs/EBOs
     glGenVertexArrays(1, &starVAO);
     glGenBuffers(1, &starVBO);
@@ -292,10 +300,12 @@ void LevelRenderer::initSkyVAOs() {
     buildStarVAO();
     buildSkyVAO();
     buildDarkVAO();
+#endif
 
     skyVAOsInitialized = true;
 }
 
+#ifndef MC_RENDERER_METAL
 void LevelRenderer::buildStarVAO() {
     std::vector<float> vertices;
     std::vector<unsigned int> indices;
@@ -360,7 +370,9 @@ void LevelRenderer::buildStarVAO() {
     starIndexCount = static_cast<int>(indices.size());
     setupSkyVAO(starVAO, starVBO, starEBO, vertices, indices);
 }
+#endif
 
+#ifndef MC_RENDERER_METAL
 void LevelRenderer::buildSkyVAO() {
     std::vector<float> vertices;
     std::vector<unsigned int> indices;
@@ -446,6 +458,7 @@ void LevelRenderer::buildDarkVAO() {
     darkIndexCount = static_cast<int>(indices.size());
     setupSkyVAO(darkVAO, darkVBO, darkEBO, vertices, indices);
 }
+#endif
 
 void LevelRenderer::renderSky(float partialTick) {
     if (!minecraft || !minecraft->player) return;
@@ -468,7 +481,8 @@ void LevelRenderer::renderSky(float partialTick) {
     float skyG = 0.808f * skyBrightness;
     float skyB = 1.0f * skyBrightness;
 
-    glDepthMask(GL_FALSE);
+    auto& device = RenderDevice::get();
+    device.setDepthWrite(false);
 
     // Save modelview matrix and translate to camera position
     MatrixStack::modelview().push();
@@ -499,8 +513,7 @@ void LevelRenderer::renderSky(float partialTick) {
     t.end();
 
     // Render sunrise/sunset glow
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    device.setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
 
     float* sunriseColor = getSunriseColor(timeOfDay);
     if (sunriseColor != nullptr) {
@@ -531,7 +544,7 @@ void LevelRenderer::renderSky(float partialTick) {
         delete[] sunriseColor;
     }
 
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE);  // Additive blending
+    device.setBlend(true, BlendFactor::SrcAlpha, BlendFactor::One);  // Additive blending
 
     // Rotate sky objects based on time of day
     MatrixStack::modelview().push();
@@ -572,12 +585,14 @@ void LevelRenderer::renderSky(float partialTick) {
         ShaderManager::getInstance().setUseTexture(false);
         ShaderManager::getInstance().setSkyColor(starBrightness, starBrightness, starBrightness, starBrightness);
 
+#ifndef MC_RENDERER_METAL
         glBindVertexArray(starVAO);
         glDrawElements(GL_TRIANGLES, starIndexCount, GL_UNSIGNED_INT, 0);
         glBindVertexArray(0);
+#endif
     }
 
-    glDisable(GL_BLEND);
+    device.setBlend(false);
     MatrixStack::modelview().pop();  // Pop time rotation
 
     // Render dark plane below using world shader (fog creates gradient)
@@ -607,8 +622,8 @@ void LevelRenderer::renderSky(float partialTick) {
     MatrixStack::modelview().pop();  // Pop camera translation
 
     // Restore state
-    glDepthMask(GL_TRUE);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    device.setDepthWrite(true);
+    device.setBlend(false);
 
     // Switch back to world shader for terrain
     ShaderManager::getInstance().useWorldShader();
@@ -694,10 +709,10 @@ void LevelRenderer::renderFastClouds(float partialTick) {
     int s = 32;
     int d = 256 / s;
 
-    glDisable(GL_CULL_FACE);
+    auto& device = RenderDevice::get();
+    device.setCullFace(false);
     Textures::getInstance().bindTexture("resources/environment/clouds.png");
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    device.setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
 
     float timeOfDay = getTimeOfDay();
     float dayBrightness = std::cos(timeOfDay * 3.14159265f * 2.0f) * 0.5f + 0.5f;
@@ -741,8 +756,8 @@ void LevelRenderer::renderFastClouds(float partialTick) {
 
     t.end();
 
-    glDisable(GL_BLEND);
-    glEnable(GL_CULL_FACE);
+    device.setBlend(false);
+    device.setCullFace(true, CullMode::Back);
 }
 
 void LevelRenderer::renderAdvancedClouds(float partialTick) {
@@ -787,11 +802,13 @@ void LevelRenderer::renderAdvancedClouds(float partialTick) {
     float sideBright = 0.9f;
 
     Textures::getInstance().bindTexture("resources/environment/clouds.png");
-    glEnable(GL_CULL_FACE);
-    glCullFace(GL_BACK);
+    auto& device = RenderDevice::get();
+    device.setCullFace(true, CullMode::Back);
+#ifndef MC_RENDERER_METAL
     glFrontFace(GL_CCW);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+#endif
 
     ShaderManager::getInstance().useWorldShader();
     ShaderManager::getInstance().updateMatrices();
@@ -799,16 +816,19 @@ void LevelRenderer::renderAdvancedClouds(float partialTick) {
     // Two-pass rendering for proper transparency
     for (int pass = 0; pass < 2; ++pass) {
         if (pass == 0) {
+#ifndef MC_RENDERER_METAL
             glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-            glDepthMask(GL_TRUE);
-            glDisable(GL_BLEND);
+#endif
+            device.setDepthWrite(true);
+            device.setBlend(false);
             ShaderManager::getInstance().setAlphaTest(0.5f);
         } else {
+#ifndef MC_RENDERER_METAL
             glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-            glDepthMask(GL_FALSE);
             glDepthFunc(GL_EQUAL);
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+#endif
+            device.setDepthWrite(false);
+            device.setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
             ShaderManager::getInstance().setAlphaTest(0.5f);
         }
 
@@ -888,12 +908,14 @@ void LevelRenderer::renderAdvancedClouds(float partialTick) {
     }
 
     // Restore GL state
-    glDepthFunc(GL_LEQUAL);
-    glDepthMask(GL_TRUE);
+    device.setDepthFunc(CompareFunc::LessEqual);
+    device.setDepthWrite(true);
+#ifndef MC_RENDERER_METAL
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-    glDisable(GL_BLEND);
-    glDisable(GL_CULL_FACE);
-    glEnable(GL_DEPTH_TEST);
+#endif
+    device.setBlend(false);
+    device.setCullFace(false);
+    device.setDepthTest(true);
 }
 
 void LevelRenderer::renderEntities(float partialTick) {
@@ -904,8 +926,8 @@ void LevelRenderer::renderEntities(float partialTick) {
     double camY = player->getInterpolatedY(partialTick) + player->eyeHeight;
     double camZ = player->getInterpolatedZ(partialTick);
 
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    auto& device = RenderDevice::get();
+    device.setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
 
     ShaderManager::getInstance().useWorldShader();
     ShaderManager::getInstance().setAlphaTest(0.1f);
@@ -1047,7 +1069,7 @@ void LevelRenderer::renderEntities(float partialTick) {
         chickenModel.setupAnim(walkPos, walkSpeed, bob, headYRot - bodyRot, headXRot);
 
         // Disable backface culling for mob rendering (matching Java)
-        glDisable(GL_CULL_FACE);
+        device.setCullFace(false);
 
         chickenModel.render(t, scale);
 
@@ -1061,22 +1083,21 @@ void LevelRenderer::renderEntities(float partialTick) {
             );
 
             // Enable blend for red overlay
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            glDepthFunc(GL_EQUAL);
+            device.setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
+            device.setDepthFunc(CompareFunc::Equal);
 
             chickenModel.render(t, scale, br, 0.0f, 0.0f, 0.4f);
 
             // Restore state
-            glDepthFunc(GL_LEQUAL);
-            glDisable(GL_BLEND);
+            device.setDepthFunc(CompareFunc::LessEqual);
+            device.setBlend(false);
         }
 
-        glEnable(GL_CULL_FACE);
+        device.setCullFace(true, CullMode::Back);
         MatrixStack::modelview().pop();
     }
 
-    glDisable(GL_BLEND);
+    device.setBlend(false);
 }
 
 void LevelRenderer::renderDroppedItemSprite(int icon, int copies, float playerYRot, unsigned int randomSeed) {

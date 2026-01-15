@@ -12,7 +12,10 @@
 #include "item/Inventory.hpp"
 #include "item/Item.hpp"
 #include "util/Mth.hpp"
+#include "renderer/backend/RenderDevice.hpp"
+#ifndef MC_RENDERER_METAL
 #include <GL/glew.h>
+#endif
 #include <cstdio>
 #include <algorithm>
 
@@ -34,13 +37,15 @@ GameRenderer::GameRenderer(Minecraft* minecraft)
 void GameRenderer::resize(int w, int h) {
     screenWidth = w;
     screenHeight = h;
-    glViewport(0, 0, w, h);
+    RenderDevice::get().setViewport(0, 0, w, h);
 }
 
 void GameRenderer::render(float partialTick) {
+    auto& device = RenderDevice::get();
+
     // Clear screen
-    glClearColor(fogRed, fogGreen, fogBlue, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    device.setClearColor(fogRed, fogGreen, fogBlue, 1.0f);
+    device.clear(true, true);
 
     // Setup camera and render world
     setupCamera(partialTick);
@@ -240,9 +245,9 @@ void GameRenderer::renderWorld(float partialTick) {
     Textures::getInstance().bind("resources/terrain.png");
 
     // Enable required states
-    glEnable(GL_DEPTH_TEST);
-    glEnable(GL_CULL_FACE);
-    glCullFace(GL_BACK);
+    auto& device = RenderDevice::get();
+    device.setDepthTest(true);
+    device.setCullFace(true, CullMode::Back);
 
     // Use world shader with fog and alpha test
     ShaderManager::getInstance().useWorldShader();
@@ -284,10 +289,9 @@ void GameRenderer::renderWorld(float partialTick) {
     // Render transparent geometry (water)
     ShaderManager::getInstance().setAlphaTest(0.0f);
     ShaderManager::getInstance().setSkyBrightness(skyBrightness);  // Ensure sky brightness is set
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    device.setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
     levelRenderer->render(partialTick, 1);
-    glDisable(GL_BLEND);
+    device.setBlend(false);
 
     // Render dropped items and entities
     levelRenderer->renderEntities(partialTick);
@@ -338,13 +342,12 @@ void GameRenderer::renderBreakingAnimation(float progress) {
     }
 
     Textures::getInstance().bind("resources/terrain.png");
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_DST_COLOR, GL_SRC_COLOR);
-    glDisable(GL_CULL_FACE);
-    glDepthMask(GL_FALSE);
+    auto& device = RenderDevice::get();
+    device.setBlend(true, BlendFactor::DstColor, BlendFactor::SrcColor);
+    device.setCullFace(false);
+    device.setDepthWrite(false);
 
-    glPolygonOffset(-3.0f, -3.0f);
-    glEnable(GL_POLYGON_OFFSET_FILL);
+    device.setPolygonOffset(true, -3.0f, -3.0f);
 
     ShaderManager::getInstance().useWorldShader();
     ShaderManager::getInstance().setAlphaTest(0.0f);
@@ -406,11 +409,10 @@ void GameRenderer::renderBreakingAnimation(float progress) {
     t.tex(texU, texV + texSize); t.vertex(x1 + e, y0 - e, z0 - e);
     t.end();
 
-    glPolygonOffset(0.0f, 0.0f);
-    glDisable(GL_POLYGON_OFFSET_FILL);
-    glDepthMask(GL_TRUE);
-    glEnable(GL_CULL_FACE);
-    glDisable(GL_BLEND);
+    device.setPolygonOffset(false);
+    device.setDepthWrite(true);
+    device.setCullFace(true, CullMode::Back);
+    device.setBlend(false);
     ShaderManager::getInstance().setAlphaTest(0.5f);
 }
 
@@ -421,11 +423,13 @@ void GameRenderer::renderHitOutline() {
     ShaderManager::getInstance().useLineShader();
     ShaderManager::getInstance().updateMatrices();
 
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glDepthMask(GL_FALSE);
+    auto& device = RenderDevice::get();
+    device.setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
+    device.setDepthWrite(false);
+#ifndef MC_RENDERER_METAL
     glDepthRange(0.0, 0.9999);
-    glLineWidth(2.0f);
+#endif
+    device.setLineWidth(2.0f);
 
     int bx = hitResult.x;
     int by = hitResult.y;
@@ -489,9 +493,11 @@ void GameRenderer::renderHitOutline() {
     t.vertex(x0, y1, z1);
     t.end();
 
+#ifndef MC_RENDERER_METAL
     glDepthRange(0.0, 1.0);
-    glDepthMask(GL_TRUE);
-    glDisable(GL_BLEND);
+#endif
+    device.setDepthWrite(true);
+    device.setBlend(false);
 
     // Switch back to world shader
     ShaderManager::getInstance().useWorldShader();
@@ -546,7 +552,7 @@ void GameRenderer::renderHand(float partialTick) {
     float h = this->oHeight + (this->height - this->oHeight) * partialTick;
     ItemStack item = this->selectedItem;
 
-    glClear(GL_DEPTH_BUFFER_BIT);
+    RenderDevice::get().clear(false, true);  // Clear depth only
 
     MatrixStack::modelview().loadIdentity();
 
@@ -1054,14 +1060,15 @@ void GameRenderer::renderGui(float /*partialTick*/) {
     MatrixStack::modelview().push();
     MatrixStack::modelview().loadIdentity();
 
-    glDisable(GL_DEPTH_TEST);
+    auto& device = RenderDevice::get();
+    device.setDepthTest(false);
 
     ShaderManager::getInstance().useGuiShader();
     ShaderManager::getInstance().updateMatrices();
 
     // GUI elements rendered via Gui class
 
-    glEnable(GL_DEPTH_TEST);
+    device.setDepthTest(true);
 
     // Restore matrices
     MatrixStack::projection().pop();

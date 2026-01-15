@@ -1,6 +1,12 @@
 #include "renderer/Textures.hpp"
 #include <iostream>
 
+#ifdef MC_RENDERER_METAL
+#include "renderer/backend/RenderDevice.hpp"
+#else
+#include <GL/glew.h>
+#endif
+
 // stb_image implementation
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_PNG
@@ -23,6 +29,9 @@ void Textures::init() {
 }
 
 void Textures::destroy() {
+#ifdef MC_RENDERER_METAL
+    textureCache.clear();
+#else
     for (auto& pair : textureCache) {
         if (pair.second) {
             glDeleteTextures(1, &pair.second);
@@ -30,26 +39,65 @@ void Textures::destroy() {
     }
     textureCache.clear();
     textureInfo.clear();
+#endif
 }
 
-GLuint Textures::loadTexture(const std::string& path, bool useMipmaps) {
+TextureHandle Textures::loadTexture(const std::string& path, bool useMipmaps) {
     // Include mipmap setting in cache key to allow same texture with different settings
     std::string cacheKey = path + (useMipmaps ? ":mip" : ":nomip");
 
     // Check cache first
     auto it = textureCache.find(cacheKey);
     if (it != textureCache.end()) {
+#ifdef MC_RENDERER_METAL
+        return it->second.get();
+#else
         return it->second;
+#endif
     }
 
     // Load new texture
-    GLuint textureId = loadTextureFromFile(path, useMipmaps);
-    if (textureId) {
-        textureCache[cacheKey] = textureId;
+    TextureHandle textureHandle = loadTextureFromFile(path, useMipmaps);
+#ifdef MC_RENDERER_METAL
+    if (textureHandle) {
+        // For Metal, the texture was already added to the cache in loadTextureFromFile
     }
-    return textureId;
+#else
+    if (textureHandle) {
+        textureCache[cacheKey] = textureHandle;
+    }
+#endif
+    return textureHandle;
 }
 
+#ifdef MC_RENDERER_METAL
+Texture* Textures::loadTextureFromFile(const std::string& path, bool useMipmaps) {
+    int width, height, channels;
+    stbi_set_flip_vertically_on_load(false);  // Minecraft textures are top-down
+
+    unsigned char* data = stbi_load(path.c_str(), &width, &height, &channels, STBI_rgb_alpha);
+    if (!data) {
+        std::cerr << "Failed to load texture: " << path << std::endl;
+        return nullptr;
+    }
+
+    auto& device = RenderDevice::get();
+    auto texture = device.createTexture();
+
+    texture->setFilter(useMipmaps ? TextureFilter::NearestMipmapLinear : TextureFilter::Nearest,
+                       TextureFilter::Nearest);
+    texture->setWrap(TextureWrap::Repeat, TextureWrap::Repeat);
+    texture->upload(width, height, data, useMipmaps);
+
+    stbi_image_free(data);
+
+    std::string cacheKey = path + (useMipmaps ? ":mip" : ":nomip");
+    Texture* rawPtr = texture.get();
+    textureCache[cacheKey] = std::move(texture);
+
+    return rawPtr;
+}
+#else
 GLuint Textures::loadTextureFromFile(const std::string& path, bool useMipmaps) {
     int width, height, channels;
     stbi_set_flip_vertically_on_load(false);  // Minecraft textures are top-down
@@ -89,44 +137,84 @@ GLuint Textures::loadTextureFromFile(const std::string& path, bool useMipmaps) {
 
     return textureId;
 }
+#endif
 
-void Textures::bind(GLuint textureId, int unit) {
+void Textures::bind(TextureHandle textureHandle, int unit) {
+#ifdef MC_RENDERER_METAL
+    if (textureHandle) {
+        textureHandle->bind(unit);
+    }
+#else
     glActiveTexture(GL_TEXTURE0 + unit);
-    glBindTexture(GL_TEXTURE_2D, textureId);
+    glBindTexture(GL_TEXTURE_2D, textureHandle);
+#endif
 }
 
 void Textures::bind(const std::string& path, int unit, bool useMipmaps) {
-    GLuint textureId = loadTexture(path, useMipmaps);
-    bind(textureId, unit);
+    TextureHandle textureHandle = loadTexture(path, useMipmaps);
+    bind(textureHandle, unit);
 }
 
 bool Textures::bindTexture(const std::string& path, int unit) {
-    GLuint textureId = loadTexture(path);
-    if (textureId == 0) {
+    TextureHandle textureHandle = loadTexture(path);
+#ifdef MC_RENDERER_METAL
+    if (textureHandle == nullptr) {
         return false;
     }
-    bind(textureId, unit);
+#else
+    if (textureHandle == 0) {
+        return false;
+    }
+#endif
+    bind(textureHandle, unit);
     return true;
 }
 
 void Textures::unbind(int unit) {
+#ifdef MC_RENDERER_METAL
+    // Metal doesn't require explicit unbinding
+#else
     glActiveTexture(GL_TEXTURE0 + unit);
     glBindTexture(GL_TEXTURE_2D, 0);
+#endif
 }
 
-int Textures::getWidth(GLuint textureId) {
-    auto it = textureInfo.find(textureId);
+int Textures::getWidth(TextureHandle textureHandle) {
+#ifdef MC_RENDERER_METAL
+    return textureHandle ? textureHandle->getWidth() : 0;
+#else
+    auto it = textureInfo.find(textureHandle);
     return it != textureInfo.end() ? it->second.width : 0;
+#endif
 }
 
-int Textures::getHeight(GLuint textureId) {
-    auto it = textureInfo.find(textureId);
+int Textures::getHeight(TextureHandle textureHandle) {
+#ifdef MC_RENDERER_METAL
+    return textureHandle ? textureHandle->getHeight() : 0;
+#else
+    auto it = textureInfo.find(textureHandle);
     return it != textureInfo.end() ? it->second.height : 0;
+#endif
 }
 
-GLuint Textures::createSolidColor(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
+TextureHandle Textures::createSolidColor(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
     uint8_t data[4] = {r, g, b, a};
 
+#ifdef MC_RENDERER_METAL
+    auto& device = RenderDevice::get();
+    auto texture = device.createTexture();
+
+    texture->setFilter(TextureFilter::Nearest, TextureFilter::Nearest);
+    texture->setWrap(TextureWrap::Repeat, TextureWrap::Repeat);
+    texture->upload(1, 1, data, false);
+
+    static int solidColorCounter = 0;
+    std::string cacheKey = "__solid_color_" + std::to_string(solidColorCounter++);
+    Texture* rawPtr = texture.get();
+    textureCache[cacheKey] = std::move(texture);
+
+    return rawPtr;
+#else
     GLuint textureId;
     glGenTextures(1, &textureId);
     glBindTexture(GL_TEXTURE_2D, textureId);
@@ -141,6 +229,7 @@ GLuint Textures::createSolidColor(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
     textureInfo[textureId] = {1, 1};
 
     return textureId;
+#endif
 }
 
 } // namespace mc

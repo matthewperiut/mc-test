@@ -1,7 +1,7 @@
 #pragma once
 
 #include <string>
-#include <GL/glew.h>
+#include "renderer/Textures.hpp"
 
 namespace mc {
 
@@ -30,7 +30,7 @@ public:
     static const std::string acceptableLetters;
 
 private:
-    GLuint fontTexture;
+    TextureHandle fontTexture;
     bool initialized;
 
     int charWidths[256];  // Width of each character

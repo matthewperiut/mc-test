@@ -3,7 +3,12 @@
 #include "gui/Gui.hpp"
 #include "renderer/Tesselator.hpp"
 #include "renderer/ShaderManager.hpp"
+
+#ifdef MC_RENDERER_METAL
+#include "renderer/backend/RenderDevice.hpp"
+#else
 #include <GL/glew.h>
+#endif
 
 namespace mc {
 
@@ -58,8 +63,12 @@ void Screen::fill(int x0, int y0, int x1, int y1, int color) {
     float g = ((color >> 8) & 0xFF) / 255.0f;
     float b = (color & 0xFF) / 255.0f;
 
+#ifdef MC_RENDERER_METAL
+    RenderDevice::get().setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
+#else
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+#endif
 
     ShaderManager::getInstance().useGuiShader();
     ShaderManager::getInstance().updateMatrices();
@@ -75,7 +84,11 @@ void Screen::fill(int x0, int y0, int x1, int y1, int color) {
     t.end();
 
     ShaderManager::getInstance().setUseTexture(true);
+#ifdef MC_RENDERER_METAL
+    RenderDevice::get().setBlend(false);
+#else
     glDisable(GL_BLEND);
+#endif
 }
 
 void Screen::fillGradient(int x0, int y0, int x1, int y1, int colorTop, int colorBottom) {
@@ -89,8 +102,12 @@ void Screen::fillGradient(int x0, int y0, int x1, int y1, int colorTop, int colo
     float g2 = ((colorBottom >> 8) & 0xFF) / 255.0f;
     float b2 = (colorBottom & 0xFF) / 255.0f;
 
+#ifdef MC_RENDERER_METAL
+    RenderDevice::get().setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
+#else
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+#endif
 
     ShaderManager::getInstance().useGuiShader();
     ShaderManager::getInstance().updateMatrices();
@@ -109,7 +126,11 @@ void Screen::fillGradient(int x0, int y0, int x1, int y1, int colorTop, int colo
     t.end();
 
     ShaderManager::getInstance().setUseTexture(true);
+#ifdef MC_RENDERER_METAL
+    RenderDevice::get().setBlend(false);
+#else
     glDisable(GL_BLEND);
+#endif
 }
 
 } // namespace mc

@@ -11,9 +11,14 @@
 #include "world/tile/Tile.hpp"
 #include "item/Inventory.hpp"
 #include "item/Item.hpp"
-#include <GL/glew.h>
 #include <sstream>
 #include <iomanip>
+
+#ifdef MC_RENDERER_METAL
+#include "renderer/backend/RenderDevice.hpp"
+#else
+#include <GL/glew.h>
+#endif
 
 namespace mc {
 
@@ -72,10 +77,16 @@ void Gui::render(float partialTick) {
 
     setupOrtho();
 
+#ifdef MC_RENDERER_METAL
+    RenderDevice::get().setDepthTest(false);
+    RenderDevice::get().setCullFace(false);
+    RenderDevice::get().setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
+#else
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+#endif
 
     ShaderManager::getInstance().useGuiShader();
     ShaderManager::getInstance().updateMatrices();
@@ -106,7 +117,11 @@ void Gui::render(float partialTick) {
             }
         }
 
+#ifdef MC_RENDERER_METAL
+        RenderDevice::get().setCullFace(true);
+#else
         glEnable(GL_CULL_FACE);
+#endif
     }
 
     // Switch back to gui shader after inventory item rendering
@@ -116,12 +131,20 @@ void Gui::render(float partialTick) {
 
     Textures::getInstance().bind("resources/gui/icons.png");
 
+#ifdef MC_RENDERER_METAL
+    RenderDevice::get().setBlend(true, BlendFactor::OneMinusDstColor, BlendFactor::OneMinusSrcColor);
+#else
     glEnable(GL_BLEND);
     glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ONE_MINUS_SRC_COLOR);
+#endif
 
     blit(scaledWidth / 2 - 7, scaledHeight / 2 - 7, 0, 0, 16, 16);
 
+#ifdef MC_RENDERER_METAL
+    RenderDevice::get().setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
+#else
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+#endif
 
     if (player) {
         renderHearts();
@@ -134,9 +157,15 @@ void Gui::render(float partialTick) {
         font.drawShadow("Minecraft Beta 1.2_02 (C++)", 2, 2, 0xFFFFFF);
     }
 
+#ifdef MC_RENDERER_METAL
+    RenderDevice::get().setBlend(false);
+    RenderDevice::get().setDepthTest(true);
+    RenderDevice::get().setCullFace(true);
+#else
     glDisable(GL_BLEND);
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
+#endif
 
     restoreProjection();
 }
@@ -157,7 +186,11 @@ void Gui::restoreProjection() {
 }
 
 void Gui::bindTexture(GLuint texture) {
+#ifndef MC_RENDERER_METAL
     glBindTexture(GL_TEXTURE_2D, texture);
+#else
+    (void)texture;
+#endif
 }
 
 void Gui::fill(int x0, int y0, int x1, int y1, int color) {
@@ -166,8 +199,12 @@ void Gui::fill(int x0, int y0, int x1, int y1, int color) {
     float g = static_cast<float>((color >> 8) & 0xFF) / 255.0f;
     float b = static_cast<float>(color & 0xFF) / 255.0f;
 
+#ifdef MC_RENDERER_METAL
+    RenderDevice::get().setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
+#else
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+#endif
 
     ShaderManager::getInstance().useGuiShader();
     ShaderManager::getInstance().updateMatrices();
@@ -183,7 +220,11 @@ void Gui::fill(int x0, int y0, int x1, int y1, int color) {
     t.end();
 
     ShaderManager::getInstance().setUseTexture(true);
+#ifdef MC_RENDERER_METAL
+    RenderDevice::get().setBlend(false);
+#else
     glDisable(GL_BLEND);
+#endif
 }
 
 void Gui::fillGradient(int x0, int y0, int x1, int y1, int colorTop, int colorBottom) {
@@ -197,8 +238,12 @@ void Gui::fillGradient(int x0, int y0, int x1, int y1, int colorTop, int colorBo
     float g2 = static_cast<float>((colorBottom >> 8) & 0xFF) / 255.0f;
     float b2 = static_cast<float>(colorBottom & 0xFF) / 255.0f;
 
+#ifdef MC_RENDERER_METAL
+    RenderDevice::get().setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
+#else
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+#endif
 
     ShaderManager::getInstance().useGuiShader();
     ShaderManager::getInstance().updateMatrices();
@@ -217,7 +262,11 @@ void Gui::fillGradient(int x0, int y0, int x1, int y1, int colorTop, int colorBo
     t.end();
 
     ShaderManager::getInstance().setUseTexture(true);
+#ifdef MC_RENDERER_METAL
+    RenderDevice::get().setBlend(false);
+#else
     glDisable(GL_BLEND);
+#endif
 }
 
 void Gui::blit(int x, int y, int u, int v, int width, int height) {
@@ -258,8 +307,12 @@ void Gui::renderHearts() {
     int baseY = scaledHeight - 32;
 
     Textures::getInstance().bind("resources/gui/icons.png");
+#ifdef MC_RENDERER_METAL
+    RenderDevice::get().setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
+#else
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+#endif
 
     for (int i = 0; i < 10; i++) {
         int heartX = scaledWidth / 2 - 91 + i * 8;
@@ -278,7 +331,11 @@ void Gui::renderHearts() {
         }
     }
 
+#ifdef MC_RENDERER_METAL
+    RenderDevice::get().setBlend(false);
+#else
     glDisable(GL_BLEND);
+#endif
 }
 
 void Gui::renderArmor() {
@@ -291,7 +348,11 @@ void Gui::renderArmor() {
     int baseY = scaledHeight - 32;
 
     Textures::getInstance().bind("resources/gui/icons.png");
+#ifdef MC_RENDERER_METAL
+    RenderDevice::get().setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
+#else
     glEnable(GL_BLEND);
+#endif
 
     for (int i = 0; i < 10; i++) {
         int armorX = scaledWidth / 2 + 91 - i * 8 - 9;
@@ -305,7 +366,11 @@ void Gui::renderArmor() {
         }
     }
 
+#ifdef MC_RENDERER_METAL
+    RenderDevice::get().setBlend(false);
+#else
     glDisable(GL_BLEND);
+#endif
 }
 
 void Gui::renderDebugInfo() {
@@ -362,8 +427,13 @@ void Gui::renderChat() {
 void Gui::renderGuiItem(const ItemStack& item, int x, int y, float z, Font* font, TileRenderer& tileRenderer) {
     if (item.isEmpty()) return;
 
+#ifdef MC_RENDERER_METAL
+    RenderDevice::get().setDepthTest(true);
+    RenderDevice::get().clear(false, true);
+#else
     glEnable(GL_DEPTH_TEST);
     glClear(GL_DEPTH_BUFFER_BIT);
+#endif
 
     if (item.id > 0 && item.id < 256) {
         Tile* tile = Tile::tiles[item.id];
@@ -446,13 +516,21 @@ void Gui::renderGuiItem(const ItemStack& item, int x, int y, float z, Font* font
         }
     }
 
+#ifdef MC_RENDERER_METAL
+    RenderDevice::get().setDepthTest(false);
+#else
     glDisable(GL_DEPTH_TEST);
+#endif
 
     if (item.count > 1 && font) {
         std::string countStr = std::to_string(item.count);
         int textX = x + 17 - font->getWidth(countStr);
         int textY = y + 9;
+#ifdef MC_RENDERER_METAL
+        RenderDevice::get().setDepthTest(false);
+#else
         glDisable(GL_DEPTH_TEST);
+#endif
         font->drawShadow(countStr, textX, textY, 0xFFFFFF);
     }
 }

@@ -1,10 +1,19 @@
 #pragma once
 
-#include "renderer/ShaderProgram.hpp"
 #include "renderer/MatrixStack.hpp"
 #include <memory>
 
+#ifdef MC_RENDERER_METAL
+#include "renderer/backend/ShaderPipeline.hpp"
+#else
+#include "renderer/ShaderProgram.hpp"
+#endif
+
 namespace mc {
+
+#ifdef MC_RENDERER_METAL
+class ShaderPipeline;
+#endif
 
 class ShaderManager {
 public:
@@ -13,10 +22,17 @@ public:
     void init();
     void destroy();
 
+#ifdef MC_RENDERER_METAL
+    ShaderPipeline* getWorldShader() { return worldShader.get(); }
+    ShaderPipeline* getSkyShader() { return skyShader.get(); }
+    ShaderPipeline* getGuiShader() { return guiShader.get(); }
+    ShaderPipeline* getLineShader() { return lineShader.get(); }
+#else
     ShaderProgram& getWorldShader() { return worldShader; }
     ShaderProgram& getSkyShader() { return skyShader; }
     ShaderProgram& getGuiShader() { return guiShader; }
     ShaderProgram& getLineShader() { return lineShader; }
+#endif
 
     void useWorldShader();
     void useSkyShader();
@@ -50,12 +66,21 @@ private:
     ShaderManager(const ShaderManager&) = delete;
     ShaderManager& operator=(const ShaderManager&) = delete;
 
+#ifdef MC_RENDERER_METAL
+    std::unique_ptr<ShaderPipeline> worldShader;
+    std::unique_ptr<ShaderPipeline> skyShader;
+    std::unique_ptr<ShaderPipeline> guiShader;
+    std::unique_ptr<ShaderPipeline> lineShader;
+
+    ShaderPipeline* currentShader = nullptr;
+#else
     ShaderProgram worldShader;
     ShaderProgram skyShader;
     ShaderProgram guiShader;
     ShaderProgram lineShader;
 
     ShaderProgram* currentShader = nullptr;
+#endif
     bool initialized = false;
 
     float fogStart = 0.0f;

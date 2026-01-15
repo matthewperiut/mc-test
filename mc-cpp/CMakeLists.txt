@@ -5,11 +5,32 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Find required packages
-find_package(OpenGL REQUIRED)
+# =============================================================================
+# Platform detection and backend selection
+# =============================================================================
+if(APPLE)
+    set(USE_METAL ON)
+    set(USE_OPENGL OFF)
+    add_compile_definitions(MC_RENDERER_METAL=1)
+    message(STATUS "Using Metal rendering backend")
+else()
+    set(USE_METAL OFF)
+    set(USE_OPENGL ON)
+    add_compile_definitions(MC_RENDERER_OPENGL=1)
+    message(STATUS "Using OpenGL rendering backend")
+endif()
+
+# =============================================================================
+# Common dependencies
+# =============================================================================
 find_package(glfw3 3.3 REQUIRED)
+find_package(glm REQUIRED)
+
+# OpenGL dependencies (needed during transition, even on macOS)
+find_package(OpenGL REQUIRED)
 find_package(GLEW REQUIRED)
-# On macOS, require OpenAL Soft (Apple's built-in OpenAL is deprecated and has audio bugs)
+
+# OpenAL (platform-specific handling)
 if(APPLE)
     find_path(OPENAL_INCLUDE_DIR AL/al.h
         PATHS /opt/homebrew/opt/openal-soft/include /usr/local/opt/openal-soft/include
@@ -27,12 +48,45 @@ if(APPLE)
 else()
     find_package(OpenAL REQUIRED)
 endif()
-find_package(glm REQUIRED)
 
-# Find stb_image for texture loading (header-only)
-# We'll include it in our sourc1e
+# =============================================================================
+# Metal-specific dependencies (macOS only)
+# =============================================================================
+if(USE_METAL)
+    include(FetchContent)
 
+    # metal-cpp - Apple's C++ bindings for Metal
+    FetchContent_Declare(
+        metal-cpp
+        URL https://developer.apple.com/metal/cpp/files/metal-cpp_macOS15_iOS18.zip
+    )
+    FetchContent_MakeAvailable(metal-cpp)
+
+    # ShaderTranspiler - GLSL to MSL conversion
+    FetchContent_Declare(
+        ShaderTranspiler
+        GIT_REPOSITORY https://github.com/RavEngine/ShaderTranspiler.git
+        GIT_TAG master
+    )
+    set(ST_BUILD_CLI OFF CACHE BOOL "" FORCE)
+    set(ST_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(ST_ENABLE_WGSL OFF CACHE BOOL "" FORCE)
+    set(ST_ENABLE_HLSL OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(ShaderTranspiler)
+
+    # Find Metal frameworks
+    find_library(METAL_FRAMEWORK Metal REQUIRED)
+    find_library(METALKIT_FRAMEWORK MetalKit REQUIRED)
+    find_library(QUARTZCORE_FRAMEWORK QuartzCore REQUIRED)
+    find_library(FOUNDATION_FRAMEWORK Foundation REQUIRED)
+    find_library(COCOA_FRAMEWORK Cocoa REQUIRED)
+
+    message(STATUS "Metal framework: ${METAL_FRAMEWORK}")
+endif()
+
+# =============================================================================
 # Source files
+# =============================================================================
 set(UTIL_SOURCES
     src/util/Mth.cpp
 )
@@ -127,13 +181,51 @@ set(GAMEMODE_SOURCES
     src/gamemode/GameMode.cpp
 )
 
+# =============================================================================
+# Backend source files
+# =============================================================================
+
+# Common backend abstraction
+set(BACKEND_COMMON_SOURCES
+    src/renderer/backend/RenderDevice.cpp
+)
+
+# OpenGL backend sources
+set(BACKEND_OPENGL_SOURCES
+    src/renderer/backend/opengl/GLRenderDevice.cpp
+    src/renderer/backend/opengl/GLShaderPipeline.cpp
+    src/renderer/backend/opengl/GLVertexBuffer.cpp
+    src/renderer/backend/opengl/GLTexture.cpp
+)
+
+# Metal backend sources (using metal-cpp - pure C++ except for window bridging)
+set(BACKEND_METAL_SOURCES
+    src/renderer/backend/metal/MetalCppImpl.cpp
+    src/renderer/backend/metal/MTLRenderDevice.cpp
+    src/renderer/backend/metal/MTLShaderPipeline.cpp
+    src/renderer/backend/metal/MTLVertexBuffer.cpp
+    src/renderer/backend/metal/MTLTexture.cpp
+    src/renderer/backend/metal/ShaderCache.cpp
+    src/renderer/backend/metal/MetalBridge.mm
+)
+
+# Select backend based on platform
+if(USE_METAL)
+    set(BACKEND_SOURCES ${BACKEND_COMMON_SOURCES} ${BACKEND_METAL_SOURCES})
+else()
+    set(BACKEND_SOURCES ${BACKEND_COMMON_SOURCES} ${BACKEND_OPENGL_SOURCES})
+endif()
+
+# =============================================================================
 # Combine all sources
+# =============================================================================
 set(ALL_SOURCES
     src/main.cpp
     ${UTIL_SOURCES}
     ${PHYS_SOURCES}
     ${CORE_SOURCES}
     ${RENDERER_SOURCES}
+    ${BACKEND_SOURCES}
     ${WORLD_SOURCES}
     ${ENTITY_SOURCES}
     ${PATHFINDER_SOURCES}
@@ -148,39 +240,66 @@ set(ALL_SOURCES
 # Create executable
 add_executable(${PROJECT_NAME} ${ALL_SOURCES})
 
+# =============================================================================
 # Include directories
+# =============================================================================
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${OPENAL_INCLUDE_DIR}
     ${OPENGL_INCLUDE_DIRS}
     ${GLEW_INCLUDE_DIRS}
-    ${OPENAL_INCLUDE_DIR}
 )
 
+if(USE_METAL)
+    target_include_directories(${PROJECT_NAME} PRIVATE
+        ${metal-cpp_SOURCE_DIR}
+        ${metal-cpp_SOURCE_DIR}/Metal
+        ${metal-cpp_SOURCE_DIR}/Foundation
+        ${metal-cpp_SOURCE_DIR}/QuartzCore
+    )
+endif()
+
+# =============================================================================
 # Link libraries
+# =============================================================================
 target_link_libraries(${PROJECT_NAME} PRIVATE
-    OpenGL::GL
     glfw
-    GLEW::GLEW
-    ${OPENAL_LIBRARY}
     glm::glm
+    ${OPENAL_LIBRARY}
+    OpenGL::GL
+    GLEW::GLEW
 )
 
-# Copy resources to build directory
+if(USE_METAL)
+    target_link_libraries(${PROJECT_NAME} PRIVATE
+        ${METAL_FRAMEWORK}
+        ${METALKIT_FRAMEWORK}
+        ${QUARTZCORE_FRAMEWORK}
+        ${FOUNDATION_FRAMEWORK}
+        ${COCOA_FRAMEWORK}
+        ShaderTranspiler
+    )
+endif()
+
+# =============================================================================
+# Copy resources and shaders
+# =============================================================================
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
     ${CMAKE_SOURCE_DIR}/resources
     $<TARGET_FILE_DIR:${PROJECT_NAME}>/resources
 )
 
-# Copy shaders to build directory
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
     ${CMAKE_SOURCE_DIR}/shaders
     $<TARGET_FILE_DIR:${PROJECT_NAME}>/shaders
 )
 
+# =============================================================================
 # Platform-specific settings
+# =============================================================================
 if(WIN32)
     target_compile_definitions(${PROJECT_NAME} PRIVATE _CRT_SECURE_NO_WARNINGS)
 endif()
@@ -191,7 +310,6 @@ else()
     target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -Wpedantic -Wno-unused-parameter)
 endif()
 
-# Debug/Release configurations
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     target_compile_definitions(${PROJECT_NAME} PRIVATE DEBUG_BUILD)
 endif()

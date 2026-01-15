@@ -3,7 +3,12 @@
 #include "renderer/Tesselator.hpp"
 #include "world/Level.hpp"
 #include "world/tile/Tile.hpp"
+
+#ifdef MC_RENDERER_METAL
+#include "renderer/backend/RenderDevice.hpp"
+#else
 #include <GL/glew.h>
+#endif
 
 namespace mc {
 
@@ -15,8 +20,13 @@ Chunk::Chunk(Level* level, int x0, int y0, int z0)
     , solidIndexCount(0), waterIndexCount(0)
     , distanceSq(0.0f)
     , level(level)
+#ifdef MC_RENDERER_METAL
+    , solidVBO(nullptr), solidEBO(nullptr)
+    , waterVBO(nullptr), waterEBO(nullptr)
+#else
     , solidVAO(0), solidVBO(0), solidEBO(0)
     , waterVAO(0), waterVBO(0), waterEBO(0)
+#endif
     , vaoInitialized(false)
 {
     bb = AABB(x0, y0, z0, x1, y1, z1);
@@ -27,6 +37,12 @@ Chunk::~Chunk() {
 }
 
 void Chunk::dispose() {
+#ifdef MC_RENDERER_METAL
+    solidVBO.reset();
+    solidEBO.reset();
+    waterVBO.reset();
+    waterEBO.reset();
+#else
     if (solidVAO) {
         glDeleteVertexArrays(1, &solidVAO);
         solidVAO = 0;
@@ -51,6 +67,7 @@ void Chunk::dispose() {
         glDeleteBuffers(1, &waterEBO);
         waterEBO = 0;
     }
+#endif
     vaoInitialized = false;
 }
 
@@ -71,6 +88,15 @@ void Chunk::calculateDistance(double camX, double camY, double camZ) {
     distanceSq = static_cast<float>(dx * dx + dy * dy + dz * dz);
 }
 
+#ifdef MC_RENDERER_METAL
+void Chunk::uploadData(VertexBuffer* vbo, IndexBuffer* ebo,
+                       const Tesselator::VertexData& data) {
+    if (!vbo || !ebo) return;
+
+    vbo->upload(data.vertices.data(), data.vertices.size() * sizeof(int), BufferUsage::Static);
+    ebo->upload(data.indices.data(), data.indices.size(), BufferUsage::Static);
+}
+#else
 void Chunk::setupVAO(GLuint vao, GLuint vbo, GLuint ebo) {
     glBindVertexArray(vao);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
@@ -113,12 +139,20 @@ void Chunk::uploadData(GLuint vao, GLuint vbo, GLuint ebo,
 
     glBindVertexArray(0);
 }
+#endif
 
 void Chunk::rebuild(TileRenderer& renderer) {
     if (!level) return;
 
-    // Create VAOs if needed
+    // Create buffers if needed
     if (!vaoInitialized) {
+#ifdef MC_RENDERER_METAL
+        auto& device = RenderDevice::get();
+        solidVBO = device.createVertexBuffer();
+        solidEBO = device.createIndexBuffer();
+        waterVBO = device.createVertexBuffer();
+        waterEBO = device.createIndexBuffer();
+#else
         glGenVertexArrays(1, &solidVAO);
         glGenBuffers(1, &solidVBO);
         glGenBuffers(1, &solidEBO);
@@ -128,7 +162,7 @@ void Chunk::rebuild(TileRenderer& renderer) {
         glGenBuffers(1, &waterVBO);
         glGenBuffers(1, &waterEBO);
         setupVAO(waterVAO, waterVBO, waterEBO);
-
+#endif
         vaoInitialized = true;
     }
 
@@ -168,7 +202,11 @@ void Chunk::rebuildSolid(TileRenderer& renderer) {
     solidIndexCount = static_cast<int>(data.indices.size());
 
     if (solidIndexCount > 0) {
+#ifdef MC_RENDERER_METAL
+        uploadData(solidVBO.get(), solidEBO.get(), data);
+#else
         uploadData(solidVAO, solidVBO, solidEBO, data);
+#endif
     }
 }
 
@@ -202,13 +240,40 @@ void Chunk::rebuildWater(TileRenderer& renderer) {
     waterIndexCount = static_cast<int>(data.indices.size());
 
     if (waterIndexCount > 0) {
+#ifdef MC_RENDERER_METAL
+        uploadData(waterVBO.get(), waterEBO.get(), data);
+#else
         uploadData(waterVAO, waterVBO, waterEBO, data);
+#endif
     }
 }
 
 void Chunk::render(int pass) {
     if (!loaded) return;
 
+#ifdef MC_RENDERER_METAL
+    auto& device = RenderDevice::get();
+
+    if (pass == 0) {
+        // Solid pass
+        if (solidIndexCount > 0 && solidVBO && solidEBO) {
+            solidVBO->bind();
+            solidEBO->bind();
+            device.setupVertexAttributes();
+            device.drawIndexed(PrimitiveType::Triangles, solidIndexCount);
+            solidVBO->unbind();
+        }
+    } else {
+        // Water pass
+        if (waterIndexCount > 0 && waterVBO && waterEBO) {
+            waterVBO->bind();
+            waterEBO->bind();
+            device.setupVertexAttributes();
+            device.drawIndexed(PrimitiveType::Triangles, waterIndexCount);
+            waterVBO->unbind();
+        }
+    }
+#else
     if (pass == 0) {
         // Solid pass
         if (solidIndexCount > 0 && solidVAO) {
@@ -224,6 +289,7 @@ void Chunk::render(int pass) {
             glBindVertexArray(0);
         }
     }
+#endif
 }
 
 } // namespace mc

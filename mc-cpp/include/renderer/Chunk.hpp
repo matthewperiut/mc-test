@@ -2,12 +2,18 @@
 
 #include "phys/AABB.hpp"
 #include "renderer/Tesselator.hpp"
+#include <memory>
+
+#ifndef MC_RENDERER_METAL
 #include <GL/glew.h>
+#endif
 
 namespace mc {
 
 class Level;
 class TileRenderer;
+class VertexBuffer;
+class IndexBuffer;
 
 class Chunk {
 public:
@@ -61,6 +67,18 @@ public:
     void dispose();
 
 private:
+#ifdef MC_RENDERER_METAL
+    void uploadData(VertexBuffer* vbo, IndexBuffer* ebo,
+                    const Tesselator::VertexData& data);
+
+    // RenderDevice buffers for solid geometry
+    std::unique_ptr<VertexBuffer> solidVBO;
+    std::unique_ptr<IndexBuffer> solidEBO;
+
+    // RenderDevice buffers for water geometry
+    std::unique_ptr<VertexBuffer> waterVBO;
+    std::unique_ptr<IndexBuffer> waterEBO;
+#else
     void setupVAO(GLuint vao, GLuint vbo, GLuint ebo);
     void uploadData(GLuint vao, GLuint vbo, GLuint ebo,
                     const Tesselator::VertexData& data);
@@ -74,6 +92,7 @@ private:
     GLuint waterVAO;
     GLuint waterVBO;
     GLuint waterEBO;
+#endif
 
     bool vaoInitialized;
 };
