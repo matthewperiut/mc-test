@@ -8,7 +8,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # =============================================================================
 # Platform detection and backend selection
 # =============================================================================
-if(APPLE)
+option(FORCE_OPENGL "Force OpenGL backend on macOS (instead of Metal)" ON)
+
+if(APPLE AND NOT FORCE_OPENGL)
     set(USE_METAL ON)
     set(USE_OPENGL OFF)
     add_compile_definitions(MC_RENDERER_METAL=1)
@@ -114,6 +116,7 @@ set(RENDERER_SOURCES
     src/renderer/GameRenderer.cpp
     src/renderer/Frustum.cpp
     src/renderer/ShaderProgram.cpp
+    src/renderer/GLSLTranspiler.cpp
     src/renderer/MatrixStack.cpp
     src/renderer/ShaderManager.cpp
 )

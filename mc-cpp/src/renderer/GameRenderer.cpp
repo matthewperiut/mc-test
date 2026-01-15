@@ -18,6 +18,7 @@
 #endif
 #include <cstdio>
 #include <algorithm>
+#include <cmath>
 
 namespace mc {
 
@@ -416,8 +417,75 @@ void GameRenderer::renderBreakingAnimation(float progress) {
     ShaderManager::getInstance().setAlphaTest(0.5f);
 }
 
+// Helper to generate a camera-facing quad for a line segment with screen-space pixel thickness
+static void drawLineAsQuad(Tesselator& t,
+                           float x0, float y0, float z0,
+                           float x1, float y1, float z1,
+                           float camX, float camY, float camZ,
+                           float pixelWidth, float screenHeight, float fovRadians) {
+    // Line direction
+    float dirX = x1 - x0;
+    float dirY = y1 - y0;
+    float dirZ = z1 - z0;
+
+    // Midpoint of line
+    float midX = (x0 + x1) * 0.5f;
+    float midY = (y0 + y1) * 0.5f;
+    float midZ = (z0 + z1) * 0.5f;
+
+    // View direction (from midpoint to camera)
+    float viewX = camX - midX;
+    float viewY = camY - midY;
+    float viewZ = camZ - midZ;
+
+    // Distance from camera to line midpoint
+    float dist = std::sqrt(viewX * viewX + viewY * viewY + viewZ * viewZ);
+    if (dist < 0.001f) dist = 0.001f;
+
+    // Calculate world-space thickness for constant screen-space pixel width
+    // thickness = pixelWidth * 2 * distance * tan(fov/2) / screenHeight
+    float thickness = pixelWidth * 2.0f * dist * std::tan(fovRadians * 0.5f) / screenHeight;
+
+    // Cross product: perpendicular = dir × view
+    float perpX = dirY * viewZ - dirZ * viewY;
+    float perpY = dirZ * viewX - dirX * viewZ;
+    float perpZ = dirX * viewY - dirY * viewX;
+
+    // Normalize perpendicular
+    float perpLen = std::sqrt(perpX * perpX + perpY * perpY + perpZ * perpZ);
+    if (perpLen < 0.0001f) {
+        // Line is pointing at camera, use arbitrary perpendicular
+        perpX = 1.0f; perpY = 0.0f; perpZ = 0.0f;
+    } else {
+        perpX /= perpLen;
+        perpY /= perpLen;
+        perpZ /= perpLen;
+    }
+
+    // Half thickness
+    float hw = thickness * 0.5f;
+
+    // Four corners of the quad
+    float ax = x0 - perpX * hw, ay = y0 - perpY * hw, az = z0 - perpZ * hw;
+    float bx = x0 + perpX * hw, by = y0 + perpY * hw, bz = z0 + perpZ * hw;
+    float cx = x1 + perpX * hw, cy = y1 + perpY * hw, cz = z1 + perpZ * hw;
+    float dx = x1 - perpX * hw, dy = y1 - perpY * hw, dz = z1 - perpZ * hw;
+
+    // Two triangles (a, b, c) and (a, c, d)
+    t.vertex(ax, ay, az);
+    t.vertex(bx, by, bz);
+    t.vertex(cx, cy, cz);
+
+    t.vertex(ax, ay, az);
+    t.vertex(cx, cy, cz);
+    t.vertex(dx, dy, dz);
+}
+
 void GameRenderer::renderHitOutline() {
     if (!hitResult.isTile()) return;
+
+    LocalPlayer* player = minecraft->player;
+    if (!player) return;
 
     // Use line shader for selection outline
     ShaderManager::getInstance().useLineShader();
@@ -426,10 +494,7 @@ void GameRenderer::renderHitOutline() {
     auto& device = RenderDevice::get();
     device.setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
     device.setDepthWrite(false);
-#ifndef MC_RENDERER_METAL
-    glDepthRange(0.0, 0.9999);
-#endif
-    device.setLineWidth(2.0f);
+    device.setCullFace(false);  // Quads should be visible from both sides
 
     int bx = hitResult.x;
     int by = hitResult.y;
@@ -458,44 +523,41 @@ void GameRenderer::renderHitOutline() {
         z1 = static_cast<float>(bz) + 1.0f + ss;
     }
 
+    // Camera position
+    float camX = static_cast<float>(player->x);
+    float camY = static_cast<float>(player->y + player->eyeHeight);
+    float camZ = static_cast<float>(player->z);
+
+    // Screen-space line parameters
+    float pixelWidth = 2.0f;  // 2 pixels like OpenGL glLineWidth(2.0f)
+    float screenHeightF = static_cast<float>(screenHeight);
+    float fovRadians = 70.0f * 3.14159265f / 180.0f;  // 70 degree FOV in radians
+
     Tesselator& t = Tesselator::getInstance();
-
-    // Bottom face
-    t.begin(GL_LINE_STRIP);
+    t.begin(GL_TRIANGLES);
     t.color(0.0f, 0.0f, 0.0f, 0.4f);
-    t.vertex(x0, y0, z0);
-    t.vertex(x1, y0, z0);
-    t.vertex(x1, y0, z1);
-    t.vertex(x0, y0, z1);
-    t.vertex(x0, y0, z0);
+
+    // Bottom face edges (4 lines)
+    drawLineAsQuad(t, x0, y0, z0, x1, y0, z0, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians);
+    drawLineAsQuad(t, x1, y0, z0, x1, y0, z1, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians);
+    drawLineAsQuad(t, x1, y0, z1, x0, y0, z1, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians);
+    drawLineAsQuad(t, x0, y0, z1, x0, y0, z0, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians);
+
+    // Top face edges (4 lines)
+    drawLineAsQuad(t, x0, y1, z0, x1, y1, z0, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians);
+    drawLineAsQuad(t, x1, y1, z0, x1, y1, z1, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians);
+    drawLineAsQuad(t, x1, y1, z1, x0, y1, z1, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians);
+    drawLineAsQuad(t, x0, y1, z1, x0, y1, z0, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians);
+
+    // Vertical edges (4 lines)
+    drawLineAsQuad(t, x0, y0, z0, x0, y1, z0, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians);
+    drawLineAsQuad(t, x1, y0, z0, x1, y1, z0, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians);
+    drawLineAsQuad(t, x1, y0, z1, x1, y1, z1, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians);
+    drawLineAsQuad(t, x0, y0, z1, x0, y1, z1, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians);
+
     t.end();
 
-    // Top face
-    t.begin(GL_LINE_STRIP);
-    t.color(0.0f, 0.0f, 0.0f, 0.4f);
-    t.vertex(x0, y1, z0);
-    t.vertex(x1, y1, z0);
-    t.vertex(x1, y1, z1);
-    t.vertex(x0, y1, z1);
-    t.vertex(x0, y1, z0);
-    t.end();
-
-    // Vertical edges
-    t.begin(GL_LINES);
-    t.color(0.0f, 0.0f, 0.0f, 0.4f);
-    t.vertex(x0, y0, z0);
-    t.vertex(x0, y1, z0);
-    t.vertex(x1, y0, z0);
-    t.vertex(x1, y1, z0);
-    t.vertex(x1, y0, z1);
-    t.vertex(x1, y1, z1);
-    t.vertex(x0, y0, z1);
-    t.vertex(x0, y1, z1);
-    t.end();
-
-#ifndef MC_RENDERER_METAL
-    glDepthRange(0.0, 1.0);
-#endif
+    device.setCullFace(true, CullMode::Back);
     device.setDepthWrite(true);
     device.setBlend(false);
 

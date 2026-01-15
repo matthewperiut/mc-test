@@ -22,7 +22,11 @@ const std::string Font::acceptableLetters =
     "pqrstuvwxyz{|}~";
 
 Font::Font()
+#ifdef MC_RENDERER_METAL
     : fontTexture(nullptr)
+#else
+    : fontTexture(0)
+#endif
     , initialized(false)
 {
     for (int i = 0; i < 256; i++) {

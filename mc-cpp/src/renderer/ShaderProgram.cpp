@@ -1,4 +1,5 @@
 #include "renderer/ShaderProgram.hpp"
+#include "renderer/GLSLTranspiler.hpp"
 #include <fstream>
 #include <sstream>
 #include <iostream>
@@ -36,10 +37,14 @@ bool ShaderProgram::load(const std::string& vertexPath, const std::string& fragm
 }
 
 bool ShaderProgram::loadFromSource(const std::string& vertexSource, const std::string& fragmentSource) {
-    GLuint vertexShader = compileShader(GL_VERTEX_SHADER, vertexSource);
+    // Transpile GLSL 450 to 330 for OpenGL compatibility
+    std::string transpiledVertex = GLSLTranspiler::transpile450to330(vertexSource);
+    std::string transpiledFragment = GLSLTranspiler::transpile450to330(fragmentSource);
+
+    GLuint vertexShader = compileShader(GL_VERTEX_SHADER, transpiledVertex);
     if (!vertexShader) return false;
 
-    GLuint fragmentShader = compileShader(GL_FRAGMENT_SHADER, fragmentSource);
+    GLuint fragmentShader = compileShader(GL_FRAGMENT_SHADER, transpiledFragment);
     if (!fragmentShader) {
         glDeleteShader(vertexShader);
         return false;
