@@ -4,6 +4,7 @@
 #include "renderer/Chunk.hpp"
 #include "renderer/TileRenderer.hpp"
 #include "renderer/Frustum.hpp"
+#include "particle/ParticleEngine.hpp"
 #include <vector>
 #include <memory>
 #include <GL/glew.h>
@@ -27,6 +28,9 @@ public:
 
     // Tile renderer
     TileRenderer tileRenderer;
+
+    // Particle engine
+    ParticleEngine particleEngine;
 
     // Render distance
     int renderDistance;
@@ -67,6 +71,12 @@ public:
     void tileChanged(int x, int y, int z) override;
     void allChanged() override;
     void lightChanged(int x, int y, int z) override;
+    void addParticle(const std::string& name, double x, double y, double z,
+                     double xa, double ya, double za) override;
+
+    // Particle rendering and management
+    void tickParticles();
+    void renderParticles(float partialTick);
 
     // Get chunk at position
     Chunk* getChunkAt(int x, int y, int z);

@@ -2,6 +2,7 @@
 #include "world/Level.hpp"
 #include "world/tile/Tile.hpp"
 #include "entity/LocalPlayer.hpp"
+#include "entity/Chicken.hpp"
 #include "renderer/LevelRenderer.hpp"
 #include "renderer/GameRenderer.hpp"
 #include "renderer/Tesselator.hpp"
@@ -246,6 +247,17 @@ void Minecraft::createLevel(int width, int height, int depth) {
 
     level->addEntity(std::move(playerEntity));
 
+    // Spawn test chickens near spawn
+    for (int i = 0; i < 5; ++i) {
+        auto chicken = std::make_unique<Chicken>(level.get());
+        chicken->setPos(
+            level->spawnX + (i - 2) * 2.0,  // Spread chickens out
+            level->spawnY,
+            level->spawnZ + 5.0  // In front of player
+        );
+        level->addEntity(std::move(chicken));
+    }
+
     // Update level renderer
     if (levelRenderer) {
         levelRenderer->setLevel(level.get());
@@ -311,6 +323,11 @@ void Minecraft::tick() {
     // Tick level
     if (level) {
         level->tick();
+    }
+
+    // Tick particles
+    if (levelRenderer) {
+        levelRenderer->tickParticles();
     }
 
     // Tick game mode
@@ -413,6 +430,13 @@ void Minecraft::handleInput() {
             levelRenderer->destroyX = x;
             levelRenderer->destroyY = y;
             levelRenderer->destroyZ = z;
+        } else if (leftMouseDown && gameRenderer->hitResult.isEntity()) {
+            // Left-click on entity - attack
+            if (!wasBreaking) {
+                // Only attack on first click (not held)
+                gameMode->attack(player, gameRenderer->hitResult.entity);
+            }
+            isBreakingBlock = false;
         } else if (leftMouseDown && !wasBreaking) {
             // Left-click in air (no tile hit) - still trigger swing
             player->swing();

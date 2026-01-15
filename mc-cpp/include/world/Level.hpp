@@ -3,6 +3,7 @@
 #include "phys/AABB.hpp"
 #include "phys/Vec3.hpp"
 #include "phys/HitResult.hpp"
+#include "pathfinder/Path.hpp"
 #include <vector>
 #include <memory>
 #include <functional>
@@ -20,6 +21,8 @@ public:
     virtual void tileChanged(int x, int y, int z) {}
     virtual void allChanged() {}
     virtual void lightChanged(int x, int y, int z) {}
+    virtual void addParticle(const std::string& name, double x, double y, double z,
+                             double xa, double ya, double za) {}
 };
 
 class Level {
@@ -114,6 +117,10 @@ public:
     void tickTiles();
     void tickEntities();
 
+    // Pathfinding
+    std::unique_ptr<Path> findPath(Entity* entity, Entity* target, float maxDist);
+    std::unique_ptr<Path> findPath(Entity* entity, int x, int y, int z, float maxDist);
+
     // Listeners
     void addListener(LevelListener* listener);
     void removeListener(LevelListener* listener);
@@ -121,6 +128,10 @@ public:
 
     // Block updates (matching Java Level.updateNeighborsAt)
     void notifyNeighborsAt(int x, int y, int z, int tileId);
+
+    // Particles
+    void addParticle(const std::string& name, double x, double y, double z,
+                     double xa, double ya, double za);
 
     // World generation
     void generateFlatWorld();

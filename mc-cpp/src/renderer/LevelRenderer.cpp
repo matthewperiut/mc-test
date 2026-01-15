@@ -4,10 +4,13 @@
 #include "renderer/Textures.hpp"
 #include "renderer/MatrixStack.hpp"
 #include "renderer/ShaderManager.hpp"
+#include "renderer/model/ChickenModel.hpp"
 #include "entity/ItemEntity.hpp"
 #include "entity/LocalPlayer.hpp"
+#include "entity/Chicken.hpp"
 #include "world/tile/Tile.hpp"
 #include "item/Item.hpp"
+#include "util/Mth.hpp"
 #include <GL/glew.h>
 #include <algorithm>
 #include <cmath>
@@ -61,6 +64,7 @@ void LevelRenderer::setLevel(Level* newLevel) {
     }
 
     level = newLevel;
+    particleEngine.setLevel(newLevel);
 
     if (level) {
         level->addListener(this);
@@ -143,6 +147,30 @@ void LevelRenderer::allChanged() {
 
 void LevelRenderer::lightChanged(int x, int y, int z) {
     tileChanged(x, y, z);
+}
+
+void LevelRenderer::addParticle(const std::string& name, double x, double y, double z,
+                                 double xa, double ya, double za) {
+    // Distance check - only add particles within 16 blocks of player
+    if (minecraft && minecraft->player) {
+        double dx = minecraft->player->x - x;
+        double dy = minecraft->player->y - y;
+        double dz = minecraft->player->z - z;
+        double distSq = dx * dx + dy * dy + dz * dz;
+        constexpr double maxDistSq = 16.0 * 16.0;  // 16 blocks
+        if (distSq > maxDistSq) return;
+    }
+
+    particleEngine.addParticle(name, x, y, z, xa, ya, za);
+}
+
+void LevelRenderer::tickParticles() {
+    particleEngine.tick();
+}
+
+void LevelRenderer::renderParticles(float partialTick) {
+    if (!minecraft || !minecraft->player) return;
+    particleEngine.render(minecraft->player, partialTick);
 }
 
 void LevelRenderer::rebuildAllChunks() {
@@ -941,6 +969,98 @@ void LevelRenderer::renderEntities(float partialTick) {
             renderDroppedItemSprite(icon, copies, player->yRot, randomSeed);
         }
 
+        MatrixStack::modelview().pop();
+    }
+
+    // Render chickens
+    static ChickenModel chickenModel;
+
+    for (const auto& entity : level->entities) {
+        Chicken* chicken = dynamic_cast<Chicken*>(entity.get());
+        if (!chicken || chicken->removed) continue;
+
+        // Interpolate position
+        double cx = chicken->prevX + (chicken->x - chicken->prevX) * partialTick;
+        double cy = chicken->prevY + (chicken->y - chicken->prevY) * partialTick;
+        double cz = chicken->prevZ + (chicken->z - chicken->prevZ) * partialTick;
+
+        // Distance culling
+        double dx = cx - camX;
+        double dy = cy - camY;
+        double dz = cz - camZ;
+        if (dx * dx + dy * dy + dz * dz > 64 * 64) continue;
+
+        // Interpolate body rotation
+        float bodyRot = chicken->yBodyRotO + (chicken->yBodyRot - chicken->yBodyRotO) * partialTick;
+        float headYRot = chicken->prevYRot + Mth::wrapDegrees(chicken->yRot - chicken->prevYRot) * partialTick;
+        float headXRot = chicken->prevXRot + (chicken->xRot - chicken->prevXRot) * partialTick;
+
+        // Walking animation
+        float walkSpeed = chicken->walkAnimSpeedO + (chicken->walkAnimSpeed - chicken->walkAnimSpeedO) * partialTick;
+        float walkPos = chicken->walkAnimPos - chicken->walkAnimSpeed * (1.0f - partialTick);
+        if (walkSpeed > 1.0f) walkSpeed = 1.0f;
+
+        // Wing flap bob - interpolate flap animation
+        float flapPos = chicken->oFlap + (chicken->flap - chicken->oFlap) * partialTick;
+        float flapSpd = chicken->oFlapSpeed + (chicken->flapSpeed - chicken->oFlapSpeed) * partialTick;
+        float bob = (Mth::sin(flapPos) + 1.0f) * flapSpd;
+
+        // Bind chicken texture
+        Textures::getInstance().bind("resources/mob/chicken.png");
+
+        MatrixStack::modelview().push();
+        MatrixStack::modelview().translate(static_cast<float>(cx), static_cast<float>(cy), static_cast<float>(cz));
+
+        // Rotate to face body direction
+        MatrixStack::modelview().rotate(180.0f - bodyRot, 0.0f, 1.0f, 0.0f);
+
+        // Death animation - fall over on Z axis (matching Java MobRenderer.setupRotations)
+        if (chicken->deathTime > 0) {
+            float fall = (static_cast<float>(chicken->deathTime) + partialTick - 1.0f) / 20.0f * 1.6f;
+            fall = Mth::sqrt(fall);
+            if (fall > 1.0f) fall = 1.0f;
+            MatrixStack::modelview().rotate(fall * 90.0f, 0.0f, 0.0f, 1.0f);
+        }
+
+        // Standard mob rendering scale
+        constexpr float scale = 0.0625f;  // 1/16
+
+        // Flip model (standard Minecraft mob rendering)
+        MatrixStack::modelview().scale(-1.0f, -1.0f, 1.0f);
+        MatrixStack::modelview().translate(0.0f, -24.0f * scale - 0.0078125f, 0.0f);
+
+        ShaderManager::getInstance().updateMatrices();
+
+        // Setup animation
+        chickenModel.setupAnim(walkPos, walkSpeed, bob, headYRot - bodyRot, headXRot);
+
+        // Disable backface culling for mob rendering (matching Java)
+        glDisable(GL_CULL_FACE);
+
+        chickenModel.render(t, scale);
+
+        // Red flash overlay when hurt or dying (matching Java MobRenderer lines 64-80)
+        if (chicken->hurtTime > 0 || chicken->deathTime > 0) {
+            // Get brightness at entity position
+            float br = level->getBrightness(
+                static_cast<int>(std::floor(chicken->x)),
+                static_cast<int>(std::floor(chicken->y)),
+                static_cast<int>(std::floor(chicken->z))
+            );
+
+            // Enable blend for red overlay
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            glDepthFunc(GL_EQUAL);
+
+            chickenModel.render(t, scale, br, 0.0f, 0.0f, 0.4f);
+
+            // Restore state
+            glDepthFunc(GL_LEQUAL);
+            glDisable(GL_BLEND);
+        }
+
+        glEnable(GL_CULL_FACE);
         MatrixStack::modelview().pop();
     }
 

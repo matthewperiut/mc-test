@@ -154,17 +154,71 @@ void GameRenderer::pick(float partialTick) {
         return;
     }
 
-    Vec3 look = player->getLookVector();
-    float reach = 5.0f;
+    // Get pick range from game mode
+    double pickRange = minecraft->gameMode ? minecraft->gameMode->getPickRange() : 5.0f;
 
-    Vec3 start(
+    // Start with block raycasting
+    Vec3 eyePos(
         player->getInterpolatedX(partialTick),
         player->getInterpolatedY(partialTick) + player->eyeHeight,
         player->getInterpolatedZ(partialTick)
     );
-    Vec3 end = start.add(look.x * reach, look.y * reach, look.z * reach);
+    Vec3 look = player->getLookVector();
+    Vec3 endPos = eyePos.add(look.x * pickRange, look.y * pickRange, look.z * pickRange);
 
-    hitResult = level->clip(start, end);
+    hitResult = level->clip(eyePos, endPos);
+
+    // Calculate entity pick distance (capped at 3.0 for non-creative, or block hit distance)
+    double entityPickRange = pickRange;
+    if (hitResult.isTile()) {
+        entityPickRange = hitResult.location.distanceTo(eyePos);
+    }
+    if (entityPickRange > 3.0) {
+        entityPickRange = 3.0;
+    }
+
+    // Entity raycasting - matching Java GameRenderer.pick()
+    Entity* hoveredEntity = nullptr;
+    double closestDist = 0.0;
+
+    // Get entities in expanded bounding box along view ray
+    Vec3 entityEnd = eyePos.add(look.x * entityPickRange, look.y * entityPickRange, look.z * entityPickRange);
+    float growAmount = 1.0f;
+    AABB searchBox = player->bb.expand(look.x * entityPickRange, look.y * entityPickRange, look.z * entityPickRange)
+                               .grow(growAmount);
+
+    std::vector<Entity*> entities = level->getEntitiesInArea(searchBox);
+
+    for (Entity* entity : entities) {
+        if (entity == player) continue;  // Don't pick self
+        if (!entity->isPickable()) continue;
+
+        // Grow entity's AABB by its pick radius
+        float pickRadius = entity->getPickRadius();
+        AABB entityBox = entity->bb.grow(pickRadius);
+
+        // Test ray-AABB intersection
+        std::optional<Vec3> hitPoint = entityBox.clip(eyePos, entityEnd);
+
+        if (entityBox.contains(eyePos.x, eyePos.y, eyePos.z)) {
+            // Player is inside entity's box - entity is closest
+            if (closestDist == 0.0) {
+                hoveredEntity = entity;
+                closestDist = 0.0;
+            }
+        } else if (hitPoint.has_value()) {
+            double dist = eyePos.distanceTo(hitPoint.value());
+            if (dist < closestDist || closestDist == 0.0) {
+                hoveredEntity = entity;
+                closestDist = dist;
+            }
+        }
+    }
+
+    // If we hit an entity and it's closer than the block, use entity hit
+    if (hoveredEntity != nullptr) {
+        hitResult = HitResult(hoveredEntity);
+    }
 }
 
 void GameRenderer::renderWorld(float partialTick) {
@@ -237,6 +291,9 @@ void GameRenderer::renderWorld(float partialTick) {
 
     // Render dropped items and entities
     levelRenderer->renderEntities(partialTick);
+
+    // Render particles
+    levelRenderer->renderParticles(partialTick);
 
     // Render clouds
     levelRenderer->renderClouds(partialTick);

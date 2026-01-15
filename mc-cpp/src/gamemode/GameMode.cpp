@@ -2,6 +2,7 @@
 #include "core/Minecraft.hpp"
 #include "world/Level.hpp"
 #include "world/tile/Tile.hpp"
+#include "entity/Entity.hpp"
 #include "entity/Player.hpp"
 #include "entity/LocalPlayer.hpp"
 #include "entity/ItemEntity.hpp"
@@ -99,6 +100,20 @@ float GameMode::getPickRange() const {
 
 bool GameMode::canHurtPlayer() const {
     return true;
+}
+
+void GameMode::attack(Player* player, Entity* target) {
+    // Match Java GameMode.attack() - forward to player
+    if (player && target) {
+        player->attack(target);
+    }
+}
+
+void GameMode::interact(Player* player, Entity* target) {
+    // Match Java GameMode.interact() - forward to player
+    if (player && target) {
+        player->interact(target);
+    }
 }
 
 // =============================================================================

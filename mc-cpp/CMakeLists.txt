@@ -63,6 +63,26 @@ set(ENTITY_SOURCES
     src/entity/Player.cpp
     src/entity/LocalPlayer.cpp
     src/entity/ItemEntity.cpp
+    src/entity/Mob.cpp
+    src/entity/PathfinderMob.cpp
+    src/entity/Animal.cpp
+    src/entity/Chicken.cpp
+)
+
+set(PATHFINDER_SOURCES
+    src/pathfinder/Path.cpp
+    src/pathfinder/PathFinder.cpp
+)
+
+set(MODEL_SOURCES
+    src/renderer/model/ModelPart.cpp
+    src/renderer/model/ChickenModel.cpp
+)
+
+set(PARTICLE_SOURCES
+    src/particle/Particle.cpp
+    src/particle/ExplodeParticle.cpp
+    src/particle/ParticleEngine.cpp
 )
 
 set(AUDIO_SOURCES
@@ -99,6 +119,9 @@ set(ALL_SOURCES
     ${RENDERER_SOURCES}
     ${WORLD_SOURCES}
     ${ENTITY_SOURCES}
+    ${PATHFINDER_SOURCES}
+    ${MODEL_SOURCES}
+    ${PARTICLE_SOURCES}
     ${AUDIO_SOURCES}
     ${GUI_SOURCES}
     ${ITEM_SOURCES}

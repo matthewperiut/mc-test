@@ -120,6 +120,7 @@ public:
     virtual bool isPushable() const { return false; }
     virtual bool isAlive() const { return !removed; }
     virtual bool isSneaking() const { return false; }
+    virtual float getPickRadius() const { return 0.1f; }  // Extra radius for hit detection
 
     // Rendering
     virtual float getShadowRadius() const { return bbWidth; }

@@ -2,6 +2,7 @@
 #include "world/tile/Tile.hpp"
 #include "entity/Entity.hpp"
 #include "entity/Player.hpp"
+#include "pathfinder/PathFinder.hpp"
 #include "util/Mth.hpp"
 #include <algorithm>
 #include <cmath>
@@ -536,6 +537,14 @@ void Level::notifyNeighborsAt(int x, int y, int z, int tileId) {
     }
 }
 
+void Level::addParticle(const std::string& name, double x, double y, double z,
+                        double xa, double ya, double za) {
+    // Notify all listeners (LevelRenderer will handle particle creation)
+    for (auto* listener : listeners) {
+        listener->addParticle(name, x, y, z, xa, ya, za);
+    }
+}
+
 void Level::generateFlatWorld() {
     // Simple flat world generation
     int groundLevel = 64;
@@ -588,6 +597,16 @@ void Level::propagateSkyLight(int x, int z) {
         }
         skyLight[getIndex(x, y, z)] = static_cast<uint8_t>(light);
     }
+}
+
+std::unique_ptr<Path> Level::findPath(Entity* entity, Entity* target, float maxDist) {
+    PathFinder finder(this);
+    return finder.findPath(entity, target, maxDist);
+}
+
+std::unique_ptr<Path> Level::findPath(Entity* entity, int x, int y, int z, float maxDist) {
+    PathFinder finder(this);
+    return finder.findPath(entity, x, y, z, maxDist);
 }
 
 } // namespace mc

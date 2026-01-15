@@ -5,6 +5,7 @@ namespace mc {
 class Minecraft;
 class Player;
 class Level;
+class Entity;
 
 // Base game mode class matching Java GameMode
 class GameMode {
@@ -47,6 +48,10 @@ public:
 
     // Get current block destroy progress (0.0 to 1.0)
     float getDestroyProgress() const { return destroyProgress; }
+
+    // Entity interaction
+    virtual void attack(Player* player, Entity* target);
+    virtual void interact(Player* player, Entity* target);
 };
 
 // Survival mode with time-based block breaking
