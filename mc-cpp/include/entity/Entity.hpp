@@ -3,6 +3,7 @@
 #include "phys/AABB.hpp"
 #include "phys/Vec3.hpp"
 #include <cstdint>
+#include <string>
 
 namespace mc {
 
