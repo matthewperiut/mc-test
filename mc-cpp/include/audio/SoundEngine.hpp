@@ -97,6 +97,11 @@ private:
     float musicVolume;
     float soundVolume;
 
+    // Listener position for distance culling
+    float listenerX;
+    float listenerY;
+    float listenerZ;
+
     // Base path for sound resources
     std::string soundBasePath;
 };

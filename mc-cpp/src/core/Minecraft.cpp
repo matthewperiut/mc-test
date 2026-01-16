@@ -193,6 +193,8 @@ bool Minecraft::init(int width, int height, bool fs) {
 
     // Initialize audio
     SoundEngine::getInstance().init();
+    SoundEngine::getInstance().setSoundVolume(options.sound);
+    SoundEngine::getInstance().setMusicVolume(options.music);
 
     // Initialize GUI
     gui = std::make_unique<Gui>(this);

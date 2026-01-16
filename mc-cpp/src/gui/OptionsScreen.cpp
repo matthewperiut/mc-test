@@ -188,10 +188,12 @@ void OptionsScreen::render(int mx, int my, float partialTick) {
     if (musicSlider && musicSlider->sliding) {
         minecraft->options.music = musicSlider->value;
         musicSlider->message = getMusicLabel();
+        SoundEngine::getInstance().setMusicVolume(musicSlider->value);
     }
     if (soundSlider && soundSlider->sliding) {
         minecraft->options.sound = soundSlider->value;
         soundSlider->message = getSoundLabel();
+        SoundEngine::getInstance().setSoundVolume(soundSlider->value);
     }
     if (sensitivitySlider && sensitivitySlider->sliding) {
         minecraft->options.mouseSensitivity = sensitivitySlider->value;
@@ -274,11 +276,13 @@ void OptionsScreen::mouseClicked(int button, int action) {
             if (musicSlider && musicSlider->mousePressed(mouseX, mouseY)) {
                 minecraft->options.music = musicSlider->value;
                 musicSlider->message = getMusicLabel();
+                SoundEngine::getInstance().setMusicVolume(musicSlider->value);
                 return;
             }
             if (soundSlider && soundSlider->mousePressed(mouseX, mouseY)) {
                 minecraft->options.sound = soundSlider->value;
                 soundSlider->message = getSoundLabel();
+                SoundEngine::getInstance().setSoundVolume(soundSlider->value);
                 return;
             }
             if (sensitivitySlider && sensitivitySlider->mousePressed(mouseX, mouseY)) {
@@ -313,11 +317,13 @@ void OptionsScreen::mouseMoved(double x, double y) {
         musicSlider->mouseDragged(mouseX, mouseY);
         minecraft->options.music = musicSlider->value;
         musicSlider->message = getMusicLabel();
+        SoundEngine::getInstance().setMusicVolume(musicSlider->value);
     }
     if (soundSlider && soundSlider->sliding) {
         soundSlider->mouseDragged(mouseX, mouseY);
         minecraft->options.sound = soundSlider->value;
         soundSlider->message = getSoundLabel();
+        SoundEngine::getInstance().setSoundVolume(soundSlider->value);
     }
     if (sensitivitySlider && sensitivitySlider->sliding) {
         sensitivitySlider->mouseDragged(mouseX, mouseY);

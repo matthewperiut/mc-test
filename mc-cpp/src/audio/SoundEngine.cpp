@@ -26,6 +26,9 @@ SoundEngine::SoundEngine()
     , masterVolume(1.0f)
     , musicVolume(1.0f)
     , soundVolume(1.0f)
+    , listenerX(0.0f)
+    , listenerY(0.0f)
+    , listenerZ(0.0f)
     , soundBasePath("../../resources")  // From build/ to mc-deobf/resources/
 {
 }
@@ -428,11 +431,6 @@ void SoundEngine::play3D(const std::string& sound, float x, float y, float z,
                           float volume, float pitch) {
     if (!initialized) return;
 
-    SoundBuffer* buffer = loadSound(sound);
-    if (!buffer) return;
-
-    ALuint source = getAvailableSource();
-
     // Match Java's behavior: if volume > 1.0, extend audible distance but cap gain at 1.0
     float dist = 16.0f;  // Java's SOUND_DISTANCE
     if (volume > 1.0f) {
@@ -440,16 +438,49 @@ void SoundEngine::play3D(const std::string& sound, float x, float y, float z,
         volume = 1.0f;
     }
 
+    // Calculate distance to listener and cull sounds beyond max audible distance
+    // Using 4.0x multiplier for standard falloff range
+    float maxDist = dist * 4.0f;
+    float dx = x - listenerX;
+    float dy = y - listenerY;
+    float dz = z - listenerZ;
+    float distSq = dx * dx + dy * dy + dz * dz;
+    if (distSq > maxDist * maxDist) {
+        return;  // Sound is too far away to hear
+    }
+
+    SoundBuffer* buffer = loadSound(sound);
+    if (!buffer) return;
+
+    ALuint source = getAvailableSource();
+
+    // Calculate distance attenuation using a parabolic curve
+    // gain = (1 - distance/maxDist)^2
+    // This gives smooth falloff: at maxDist it's silent, at maxDist/2 it's 25%, etc.
+    float actualDistance = std::sqrt(distSq);
+    float attenuationGain = 1.0f;
+    if (actualDistance > 0.0f) {
+        float falloffRatio = actualDistance / maxDist;
+        if (falloffRatio >= 1.0f) {
+            attenuationGain = 0.0f;
+        } else {
+            attenuationGain = (1.0f - falloffRatio) * (1.0f - falloffRatio);  // Parabolic curve
+        }
+    }
+
+    // Apply attenuation to the volume
+    float finalGain = volume * soundVolume * masterVolume * attenuationGain;
+
     alSourcei(source, AL_BUFFER, buffer->buffer);
-    alSourcef(source, AL_GAIN, volume * soundVolume * masterVolume);
+    alSourcef(source, AL_GAIN, finalGain);
     alSourcef(source, AL_PITCH, pitch);
     alSourcei(source, AL_SOURCE_RELATIVE, AL_FALSE);
     alSource3f(source, AL_POSITION, x, y, z);
 
-    // Set attenuation to match Java's Paul's Sound System
-    alSourcef(source, AL_REFERENCE_DISTANCE, dist);
-    alSourcef(source, AL_ROLLOFF_FACTOR, 1.0f);
-    alSourcef(source, AL_MAX_DISTANCE, dist * 4.0f);
+    // Disable OpenAL attenuation since we're doing it manually
+    alSourcef(source, AL_REFERENCE_DISTANCE, 1.0f);
+    alSourcef(source, AL_ROLLOFF_FACTOR, 0.0f);
+    alSourcef(source, AL_MAX_DISTANCE, 999999.0f);
 
     alSourcePlay(source);
 }
@@ -491,6 +522,9 @@ bool SoundEngine::isMusicPlaying() const {
 
 void SoundEngine::setListenerPosition(float x, float y, float z) {
     if (!initialized) return;
+    listenerX = x;
+    listenerY = y;
+    listenerZ = z;
     alListener3f(AL_POSITION, x, y, z);
 }
 

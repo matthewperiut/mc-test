@@ -348,18 +348,18 @@ void Entity::playStepSound(int tileId) {
         SoundEngine::getInstance().playSound3D(
             "step.stone",
             static_cast<float>(x), static_cast<float>(y), static_cast<float>(z),
-            tile ? tile->stepSoundVolume * 0.15f : 0.15f,
+            tile ? tile->stepSoundVolume * 0.10f : 0.10f,
             tile ? tile->stepSoundPitch : 1.0f
         );
         return;
     }
 
-    // Play step sound at entity position with reduced volume (matching Java: volume * 0.15)
+    // Play step sound at entity position with reduced volume
     std::string soundName = "step." + tile->stepSound;
     SoundEngine::getInstance().playSound3D(
         soundName,
         static_cast<float>(x), static_cast<float>(y), static_cast<float>(z),
-        tile->stepSoundVolume * 0.15f,
+        tile->stepSoundVolume * 0.10f,
         tile->stepSoundPitch
     );
 }
