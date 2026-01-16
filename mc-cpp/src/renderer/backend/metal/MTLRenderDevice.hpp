@@ -52,6 +52,7 @@ public:
 
     // Culling
     void setCullFace(bool enabled, CullMode mode = CullMode::Back) override;
+    void setFrontFace(FrontFace face) override;
 
     // Blending
     void setBlend(bool enabled, BlendFactor src = BlendFactor::SrcAlpha,
@@ -62,6 +63,9 @@ public:
 
     // Line width
     void setLineWidth(float width) override;
+
+    // Color mask
+    void setColorMask(bool r, bool g, bool b, bool a) override;
 
     // Factory methods
     std::unique_ptr<ShaderPipeline> createShaderPipeline() override;

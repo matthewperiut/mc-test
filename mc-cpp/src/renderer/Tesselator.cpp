@@ -1,5 +1,6 @@
 #include "renderer/Tesselator.hpp"
 #include "renderer/backend/RenderDevice.hpp"
+#include "renderer/backend/VertexBuffer.hpp"
 #include <cstring>
 #include <stdexcept>
 #include <iostream>
@@ -19,16 +20,9 @@ Tesselator& Tesselator::getInstance() {
 }
 
 Tesselator::Tesselator()
-#ifdef MC_RENDERER_METAL
     : vertexBuffer(nullptr)
     , indexBuffer(nullptr)
     , vaoInitialized(false)
-#else
-    : vao(0)
-    , vbo(0)
-    , ebo(0)
-    , vaoInitialized(false)
-#endif
     , p(0)
     , vertices(0)
     , count(0)
@@ -43,7 +37,7 @@ Tesselator::Tesselator()
     , hasLight(false)
     , noColorFlag(false)
     , tesselating(false)
-    , mode(GL_QUADS)
+    , mode(DrawMode::Quads)
 {
     // Pre-allocate array (2097152 ints like Java)
     array.resize(2097152);
@@ -58,69 +52,23 @@ Tesselator::~Tesselator() {
 void Tesselator::init() {
     if (vaoInitialized) return;
 
-#ifdef MC_RENDERER_METAL
     auto& device = RenderDevice::get();
     vertexBuffer = device.createVertexBuffer();
     indexBuffer = device.createIndexBuffer();
-#else
-    glGenVertexArrays(1, &vao);
-    glGenBuffers(1, &vbo);
-    glGenBuffers(1, &ebo);
-
-    setupVAO();
-#endif
     vaoInitialized = true;
-}
-
-void Tesselator::setupVAO() {
-#ifndef MC_RENDERER_METAL
-    glBindVertexArray(vao);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-
-    // Position attribute (location 0) - 3 floats at offset 0
-    glVertexAttribPointer(ATTRIB_POSITION, 3, GL_FLOAT, GL_FALSE, 32, (void*)0);
-    glEnableVertexAttribArray(ATTRIB_POSITION);
-
-    // TexCoord attribute (location 1) - 2 floats at offset 12
-    glVertexAttribPointer(ATTRIB_TEXCOORD, 2, GL_FLOAT, GL_FALSE, 32, (void*)12);
-    glEnableVertexAttribArray(ATTRIB_TEXCOORD);
-
-    // Color attribute (location 2) - 4 unsigned bytes normalized at offset 20
-    glVertexAttribPointer(ATTRIB_COLOR, 4, GL_UNSIGNED_BYTE, GL_TRUE, 32, (void*)20);
-    glEnableVertexAttribArray(ATTRIB_COLOR);
-
-    // Normal attribute (location 3) - 3 signed bytes normalized at offset 24
-    glVertexAttribPointer(ATTRIB_NORMAL, 3, GL_BYTE, GL_TRUE, 32, (void*)24);
-    glEnableVertexAttribArray(ATTRIB_NORMAL);
-
-    // Light attribute (location 4) - 2 unsigned bytes at offset 28 (skyLight, blockLight)
-    glVertexAttribPointer(ATTRIB_LIGHT, 2, GL_UNSIGNED_BYTE, GL_FALSE, 32, (void*)28);
-    glEnableVertexAttribArray(ATTRIB_LIGHT);
-
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-
-    glBindVertexArray(0);
-#endif
 }
 
 void Tesselator::destroy() {
     if (vaoInitialized) {
-#ifdef MC_RENDERER_METAL
         vertexBuffer.reset();
         indexBuffer.reset();
-#else
-        glDeleteVertexArrays(1, &vao);
-        glDeleteBuffers(1, &vbo);
-        glDeleteBuffers(1, &ebo);
-        vao = vbo = ebo = 0;
-#endif
         vaoInitialized = false;
     }
     array.clear();
     indices.clear();
 }
 
-void Tesselator::begin(GLenum drawMode) {
+void Tesselator::begin(DrawMode drawMode) {
     if (tesselating) {
         throw std::runtime_error("Already tesselating!");
     }
@@ -172,7 +120,6 @@ void Tesselator::draw() {
         init();
     }
 
-#ifdef MC_RENDERER_METAL
     auto& device = RenderDevice::get();
 
     // Upload vertex data
@@ -180,13 +127,13 @@ void Tesselator::draw() {
     vertexBuffer->bind();
     device.setupVertexAttributes();
 
-    if (mode == GL_QUADS) {
+    if (mode == DrawMode::Quads) {
         // Convert quads to triangles using index buffer
         buildQuadIndices();
         indexBuffer->upload(indices.data(), indices.size(), BufferUsage::Stream);
         indexBuffer->bind();
         device.drawIndexed(PrimitiveType::Triangles, indices.size());
-    } else if (mode == GL_TRIANGLE_FAN) {
+    } else if (mode == DrawMode::TriangleFan) {
         // Convert triangle fan to triangles
         if (vertices >= 3) {
             indices.clear();
@@ -199,52 +146,17 @@ void Tesselator::draw() {
             indexBuffer->bind();
             device.drawIndexed(PrimitiveType::Triangles, indices.size());
         }
-    } else if (mode == GL_TRIANGLES) {
+    } else if (mode == DrawMode::Triangles) {
         device.draw(PrimitiveType::Triangles, vertices);
-    } else if (mode == GL_LINES) {
+    } else if (mode == DrawMode::Lines) {
         device.draw(PrimitiveType::Lines, vertices);
-    } else if (mode == GL_LINE_STRIP) {
+    } else if (mode == DrawMode::LineStrip) {
         device.draw(PrimitiveType::LineStrip, vertices);
-    } else if (mode == GL_POINTS) {
+    } else if (mode == DrawMode::Points) {
         device.draw(PrimitiveType::Points, vertices);
     }
 
     vertexBuffer->unbind();
-#else
-    glBindVertexArray(vao);
-
-    // Upload vertex data
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, p * sizeof(int), array.data(), GL_STREAM_DRAW);
-
-    if (mode == GL_QUADS) {
-        // Convert quads to triangles using index buffer
-        buildQuadIndices();
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int),
-                     indices.data(), GL_STREAM_DRAW);
-        glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(indices.size()), GL_UNSIGNED_INT, 0);
-    } else if (mode == GL_TRIANGLE_FAN) {
-        // Convert triangle fan to triangles
-        if (vertices >= 3) {
-            indices.clear();
-            for (int i = 1; i < vertices - 1; i++) {
-                indices.push_back(0);
-                indices.push_back(i);
-                indices.push_back(i + 1);
-            }
-            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-            glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int),
-                         indices.data(), GL_STREAM_DRAW);
-            glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(indices.size()), GL_UNSIGNED_INT, 0);
-        }
-    } else {
-        // For GL_TRIANGLES, GL_LINES, GL_LINE_STRIP, GL_LINE_LOOP, GL_POINTS
-        glDrawArrays(mode, 0, vertices);
-    }
-
-    glBindVertexArray(0);
-#endif
 }
 
 void Tesselator::clear() {
@@ -393,7 +305,7 @@ Tesselator::VertexData Tesselator::getVertexData() {
     data.vertices.assign(array.begin(), array.begin() + p);
 
     // Build indices if needed
-    if (mode == GL_QUADS) {
+    if (mode == DrawMode::Quads) {
         int numQuads = vertices / 4;
         data.indices.reserve(numQuads * 6);
         for (int i = 0; i < numQuads; i++) {
@@ -405,7 +317,7 @@ Tesselator::VertexData Tesselator::getVertexData() {
             data.indices.push_back(base + 2);
             data.indices.push_back(base + 3);
         }
-    } else if (mode == GL_TRIANGLE_FAN && vertices >= 3) {
+    } else if (mode == DrawMode::TriangleFan && vertices >= 3) {
         for (int i = 1; i < vertices - 1; i++) {
             data.indices.push_back(0);
             data.indices.push_back(i);

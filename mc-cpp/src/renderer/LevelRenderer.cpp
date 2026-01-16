@@ -12,9 +12,6 @@
 #include "item/Item.hpp"
 #include "util/Mth.hpp"
 #include "renderer/backend/RenderDevice.hpp"
-#ifndef MC_RENDERER_METAL
-#include <GL/glew.h>
-#endif
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -49,17 +46,7 @@ LevelRenderer::~LevelRenderer() {
 }
 
 void LevelRenderer::disposeSkyVAOs() {
-#ifndef MC_RENDERER_METAL
-    if (starVAO) { glDeleteVertexArrays(1, &starVAO); starVAO = 0; }
-    if (starVBO) { glDeleteBuffers(1, &starVBO); starVBO = 0; }
-    if (starEBO) { glDeleteBuffers(1, &starEBO); starEBO = 0; }
-    if (skyVAO) { glDeleteVertexArrays(1, &skyVAO); skyVAO = 0; }
-    if (skyVBO) { glDeleteBuffers(1, &skyVBO); skyVBO = 0; }
-    if (skyEBO) { glDeleteBuffers(1, &skyEBO); skyEBO = 0; }
-    if (darkVAO) { glDeleteVertexArrays(1, &darkVAO); darkVAO = 0; }
-    if (darkVBO) { glDeleteBuffers(1, &darkVBO); darkVBO = 0; }
-    if (darkEBO) { glDeleteBuffers(1, &darkEBO); darkEBO = 0; }
-#endif
+    // Sky geometry is now rendered via Tesselator, no VAOs to dispose
     skyVAOsInitialized = false;
 }
 
@@ -259,60 +246,20 @@ void LevelRenderer::render(float /*partialTick*/, int pass) {
     }
 }
 
-#ifndef MC_RENDERER_METAL
-// Helper to setup a simple position-only VAO for sky geometry
-static void setupSkyVAO(GLuint vao, GLuint vbo, GLuint ebo,
-                        const std::vector<float>& vertices,
-                        const std::vector<unsigned int>& indices) {
-    glBindVertexArray(vao);
-
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
-
-    // Position attribute only (location 0) - 3 floats
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
-
-    glBindVertexArray(0);
-}
-#endif
-
 void LevelRenderer::initSkyVAOs() {
     if (skyVAOsInitialized) return;
 
-#ifndef MC_RENDERER_METAL
-    // Generate VAOs/VBOs/EBOs
-    glGenVertexArrays(1, &starVAO);
-    glGenBuffers(1, &starVBO);
-    glGenBuffers(1, &starEBO);
-
-    glGenVertexArrays(1, &skyVAO);
-    glGenBuffers(1, &skyVBO);
-    glGenBuffers(1, &skyEBO);
-
-    glGenVertexArrays(1, &darkVAO);
-    glGenBuffers(1, &darkVBO);
-    glGenBuffers(1, &darkEBO);
-
-    buildStarVAO();
-    buildSkyVAO();
-    buildDarkVAO();
-#endif
+    // Generate star data for later rendering via Tesselator
+    buildStarData();
 
     skyVAOsInitialized = true;
 }
 
-#ifndef MC_RENDERER_METAL
-void LevelRenderer::buildStarVAO() {
-    std::vector<float> vertices;
-    std::vector<unsigned int> indices;
+void LevelRenderer::buildStarData() {
+    starVertices.clear();
 
     // Generate deterministic stars matching Java (seed 10842)
     std::srand(10842);
-    unsigned int vertexIndex = 0;
 
     for (int i = 0; i < 1500; ++i) {
         float x = (static_cast<float>(std::rand()) / RAND_MAX) * 2.0f - 1.0f;
@@ -351,114 +298,13 @@ void LevelRenderer::buildStarVAO() {
                 float _xo = -_yo * xCos;
                 float xo = _xo * ySin - _zo * yCos;
                 float zo2 = _zo * ySin + _xo * yCos;
-                vertices.push_back(xp + xo);
-                vertices.push_back(yp + __yo);
-                vertices.push_back(zp + zo2);
+                starVertices.push_back(xp + xo);
+                starVertices.push_back(yp + __yo);
+                starVertices.push_back(zp + zo2);
             }
-
-            // 2 triangles per quad (6 indices)
-            indices.push_back(vertexIndex);
-            indices.push_back(vertexIndex + 1);
-            indices.push_back(vertexIndex + 2);
-            indices.push_back(vertexIndex);
-            indices.push_back(vertexIndex + 2);
-            indices.push_back(vertexIndex + 3);
-            vertexIndex += 4;
         }
     }
-
-    starIndexCount = static_cast<int>(indices.size());
-    setupSkyVAO(starVAO, starVBO, starEBO, vertices, indices);
 }
-#endif
-
-#ifndef MC_RENDERER_METAL
-void LevelRenderer::buildSkyVAO() {
-    std::vector<float> vertices;
-    std::vector<unsigned int> indices;
-
-    int s = 64;
-    int d = 256 / s + 2;
-    float yy = 16.0f;
-
-    unsigned int vertexIndex = 0;
-    for (int xx = -s * d; xx <= s * d; xx += s) {
-        for (int zz = -s * d; zz <= s * d; zz += s) {
-            // 4 vertices per quad
-            vertices.push_back(static_cast<float>(xx));
-            vertices.push_back(yy);
-            vertices.push_back(static_cast<float>(zz));
-
-            vertices.push_back(static_cast<float>(xx + s));
-            vertices.push_back(yy);
-            vertices.push_back(static_cast<float>(zz));
-
-            vertices.push_back(static_cast<float>(xx + s));
-            vertices.push_back(yy);
-            vertices.push_back(static_cast<float>(zz + s));
-
-            vertices.push_back(static_cast<float>(xx));
-            vertices.push_back(yy);
-            vertices.push_back(static_cast<float>(zz + s));
-
-            // 2 triangles (6 indices)
-            indices.push_back(vertexIndex);
-            indices.push_back(vertexIndex + 1);
-            indices.push_back(vertexIndex + 2);
-            indices.push_back(vertexIndex);
-            indices.push_back(vertexIndex + 2);
-            indices.push_back(vertexIndex + 3);
-            vertexIndex += 4;
-        }
-    }
-
-    skyIndexCount = static_cast<int>(indices.size());
-    setupSkyVAO(skyVAO, skyVBO, skyEBO, vertices, indices);
-}
-
-void LevelRenderer::buildDarkVAO() {
-    std::vector<float> vertices;
-    std::vector<unsigned int> indices;
-
-    int s = 64;
-    int d = 256 / s + 2;
-    float yy = -16.0f;
-
-    unsigned int vertexIndex = 0;
-    for (int xx = -s * d; xx <= s * d; xx += s) {
-        for (int zz = -s * d; zz <= s * d; zz += s) {
-            // 4 vertices per quad (reversed winding)
-            vertices.push_back(static_cast<float>(xx + s));
-            vertices.push_back(yy);
-            vertices.push_back(static_cast<float>(zz));
-
-            vertices.push_back(static_cast<float>(xx));
-            vertices.push_back(yy);
-            vertices.push_back(static_cast<float>(zz));
-
-            vertices.push_back(static_cast<float>(xx));
-            vertices.push_back(yy);
-            vertices.push_back(static_cast<float>(zz + s));
-
-            vertices.push_back(static_cast<float>(xx + s));
-            vertices.push_back(yy);
-            vertices.push_back(static_cast<float>(zz + s));
-
-            // 2 triangles (6 indices)
-            indices.push_back(vertexIndex);
-            indices.push_back(vertexIndex + 1);
-            indices.push_back(vertexIndex + 2);
-            indices.push_back(vertexIndex);
-            indices.push_back(vertexIndex + 2);
-            indices.push_back(vertexIndex + 3);
-            vertexIndex += 4;
-        }
-    }
-
-    darkIndexCount = static_cast<int>(indices.size());
-    setupSkyVAO(darkVAO, darkVBO, darkEBO, vertices, indices);
-}
-#endif
 
 void LevelRenderer::renderSky(float partialTick) {
     if (!minecraft || !minecraft->player) return;
@@ -500,7 +346,7 @@ void LevelRenderer::renderSky(float partialTick) {
     float yy = 16.0f;
 
     Tesselator& t = Tesselator::getInstance();
-    t.begin(GL_QUADS);
+    t.begin(DrawMode::Quads);
     t.color(skyR, skyG, skyB, 1.0f);
     for (int xx = -s * d; xx <= s * d; xx += s) {
         for (int zz = -s * d; zz <= s * d; zz += s) {
@@ -526,7 +372,7 @@ void LevelRenderer::renderSky(float partialTick) {
         ShaderManager::getInstance().setUseVertexColor(true);  // Use per-vertex colors for gradient
 
         Tesselator& t = Tesselator::getInstance();
-        t.begin(GL_TRIANGLE_FAN);
+        t.begin(DrawMode::TriangleFan);
         // Center vertex with full alpha
         t.color(sunriseColor[0], sunriseColor[1], sunriseColor[2], sunriseColor[3]);
         t.vertex(0.0f, 100.0f, 0.0f);
@@ -557,7 +403,7 @@ void LevelRenderer::renderSky(float partialTick) {
     // Render sun (Java size: 30.0f)
     float ss = 30.0f;
     if (Textures::getInstance().bindTexture("resources/terrain/sun.png")) {
-        t.begin(GL_QUADS);
+        t.begin(DrawMode::Quads);
         t.color(1.0f, 1.0f, 1.0f, 1.0f);
         t.tex(0.0f, 0.0f); t.vertex(-ss, 100.0f, -ss);
         t.tex(1.0f, 0.0f); t.vertex(ss, 100.0f, -ss);
@@ -569,7 +415,7 @@ void LevelRenderer::renderSky(float partialTick) {
     // Render moon (Java size: 20.0f)
     ss = 20.0f;
     if (Textures::getInstance().bindTexture("resources/terrain/moon.png")) {
-        t.begin(GL_QUADS);
+        t.begin(DrawMode::Quads);
         t.color(1.0f, 1.0f, 1.0f, 1.0f);
         t.tex(1.0f, 1.0f); t.vertex(-ss, -100.0f, ss);
         t.tex(0.0f, 1.0f); t.vertex(ss, -100.0f, ss);
@@ -578,17 +424,23 @@ void LevelRenderer::renderSky(float partialTick) {
         t.end();
     }
 
-    // Render stars at night using VAO
+    // Render stars at night using Tesselator
     float starBrightness = getStarBrightness(timeOfDay);
-    if (starBrightness > 0.0f) {
+    if (starBrightness > 0.0f && !starVertices.empty()) {
         ShaderManager::getInstance().setUseTexture(false);
         ShaderManager::getInstance().setSkyColor(starBrightness, starBrightness, starBrightness, starBrightness);
 
-#ifndef MC_RENDERER_METAL
-        glBindVertexArray(starVAO);
-        glDrawElements(GL_TRIANGLES, starIndexCount, GL_UNSIGNED_INT, 0);
-        glBindVertexArray(0);
-#endif
+        // Render stars as quads via Tesselator
+        t.begin(DrawMode::Quads);
+        t.color(starBrightness, starBrightness, starBrightness, starBrightness);
+        for (size_t i = 0; i + 11 < starVertices.size(); i += 12) {
+            // 4 vertices per quad, 3 floats per vertex
+            t.vertex(starVertices[i], starVertices[i+1], starVertices[i+2]);
+            t.vertex(starVertices[i+3], starVertices[i+4], starVertices[i+5]);
+            t.vertex(starVertices[i+6], starVertices[i+7], starVertices[i+8]);
+            t.vertex(starVertices[i+9], starVertices[i+10], starVertices[i+11]);
+        }
+        t.end();
     }
 
     device.setBlend(false);
@@ -605,7 +457,7 @@ void LevelRenderer::renderSky(float partialTick) {
     ShaderManager::getInstance().setAlphaTest(0.0f);
 
     float yyDark = -16.0f;
-    t.begin(GL_QUADS);
+    t.begin(DrawMode::Quads);
     t.color(voidR, voidG, voidB, 1.0f);
     for (int xx = -s * d; xx <= s * d; xx += s) {
         for (int zz = -s * d; zz <= s * d; zz += s) {
@@ -731,7 +583,7 @@ void LevelRenderer::renderFastClouds(float partialTick) {
     ShaderManager::getInstance().setAlphaTest(0.0f);
 
     Tesselator& t = Tesselator::getInstance();
-    t.begin(GL_QUADS);
+    t.begin(DrawMode::Quads);
     t.color(cr, cg, cb, 0.8f);
 
     for (int gx = -d; gx < d; gx++) {
@@ -800,14 +652,11 @@ void LevelRenderer::renderAdvancedClouds(float partialTick) {
     float bottomBright = 0.7f;
     float sideBright = 0.9f;
 
-    Textures::getInstance().bindTexture("resources/environment/clouds.png");
+    // Bind cloud texture with NEAREST filtering (no mipmaps)
+    Textures::getInstance().bind("resources/environment/clouds.png", 0, false);
     auto& device = RenderDevice::get();
     device.setCullFace(true, CullMode::Back);
-#ifndef MC_RENDERER_METAL
-    glFrontFace(GL_CCW);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-#endif
+    device.setFrontFace(FrontFace::CounterClockwise);
 
     ShaderManager::getInstance().useWorldShader();
     ShaderManager::getInstance().updateMatrices();
@@ -815,24 +664,20 @@ void LevelRenderer::renderAdvancedClouds(float partialTick) {
     // Two-pass rendering for proper transparency
     for (int pass = 0; pass < 2; ++pass) {
         if (pass == 0) {
-#ifndef MC_RENDERER_METAL
-            glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-#endif
+            device.setColorMask(false, false, false, false);
             device.setDepthWrite(true);
             device.setBlend(false);
             ShaderManager::getInstance().setAlphaTest(0.5f);
         } else {
-#ifndef MC_RENDERER_METAL
-            glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-            glDepthFunc(GL_EQUAL);
-#endif
+            device.setColorMask(true, true, true, true);
+            device.setDepthFunc(CompareFunc::Equal);
             device.setDepthWrite(false);
             device.setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
             ShaderManager::getInstance().setAlphaTest(0.5f);
         }
 
         Tesselator& t = Tesselator::getInstance();
-        t.begin(GL_QUADS);
+        t.begin(DrawMode::Quads);
 
         for (int gx = -gridExtent; gx < gridExtent; ++gx) {
             for (int gz = -gridExtent; gz < gridExtent; ++gz) {
@@ -909,9 +754,7 @@ void LevelRenderer::renderAdvancedClouds(float partialTick) {
     // Restore GL state
     device.setDepthFunc(CompareFunc::LessEqual);
     device.setDepthWrite(true);
-#ifndef MC_RENDERER_METAL
-    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-#endif
+    device.setColorMask(true, true, true, true);
     device.setBlend(false);
     device.setCullFace(false);
     device.setDepthTest(true);
@@ -983,7 +826,7 @@ void LevelRenderer::renderEntities(float partialTick) {
                         MatrixStack::modelview().translate(xo, yo, zo);
                         ShaderManager::getInstance().updateMatrices();
                     }
-                    t.begin(GL_QUADS);
+                    t.begin(DrawMode::Quads);
                     tileRenderer.renderBlockItem(tile, 1.0f);
                     t.end();
                     MatrixStack::modelview().pop();
@@ -1126,7 +969,7 @@ void LevelRenderer::renderDroppedItemSprite(int icon, int copies, float playerYR
         MatrixStack::modelview().rotate(180.0f - playerYRot, 0.0f, 1.0f, 0.0f);
         ShaderManager::getInstance().updateMatrices();
 
-        t.begin(GL_QUADS);
+        t.begin(DrawMode::Quads);
         t.color(1.0f, 1.0f, 1.0f, 1.0f);
         t.normal(0.0f, 1.0f, 0.0f);
         t.tex(u0, v1); t.vertex(0.0f - xo, 0.0f - yo, 0.0f);

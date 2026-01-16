@@ -3,12 +3,7 @@
 #include "renderer/Textures.hpp"
 #include "renderer/Tesselator.hpp"
 #include "renderer/ShaderManager.hpp"
-
-#ifdef MC_RENDERER_METAL
 #include "renderer/backend/RenderDevice.hpp"
-#else
-#include <GL/glew.h>
-#endif
 
 namespace mc {
 
@@ -41,12 +36,7 @@ void Button::render(Font* font, int mouseX, int mouseY) {
 
     Textures::getInstance().bind("resources/gui/gui.png");
 
-#ifdef MC_RENDERER_METAL
     RenderDevice::get().setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
-#else
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-#endif
 
     ShaderManager::getInstance().useGuiShader();
     ShaderManager::getInstance().updateMatrices();
@@ -66,7 +56,7 @@ void Button::render(Font* font, int mouseX, int mouseY) {
     Tesselator& t = Tesselator::getInstance();
 
     // Draw button using two halves
-    t.begin(GL_QUADS);
+    t.begin(DrawMode::Quads);
     t.color(1.0f, 1.0f, 1.0f, 1.0f);
 
     // Left half
@@ -98,11 +88,7 @@ void Button::render(Font* font, int mouseX, int mouseY) {
 
     t.end();
 
-#ifdef MC_RENDERER_METAL
     RenderDevice::get().setBlend(false);
-#else
-    glDisable(GL_BLEND);
-#endif
 
     int textColor;
     if (!active) {

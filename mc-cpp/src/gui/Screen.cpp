@@ -3,12 +3,7 @@
 #include "gui/Gui.hpp"
 #include "renderer/Tesselator.hpp"
 #include "renderer/ShaderManager.hpp"
-
-#ifdef MC_RENDERER_METAL
 #include "renderer/backend/RenderDevice.hpp"
-#else
-#include <GL/glew.h>
-#endif
 
 namespace mc {
 
@@ -63,19 +58,14 @@ void Screen::fill(int x0, int y0, int x1, int y1, int color) {
     float g = ((color >> 8) & 0xFF) / 255.0f;
     float b = (color & 0xFF) / 255.0f;
 
-#ifdef MC_RENDERER_METAL
     RenderDevice::get().setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
-#else
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-#endif
 
     ShaderManager::getInstance().useGuiShader();
     ShaderManager::getInstance().updateMatrices();
     ShaderManager::getInstance().setUseTexture(false);
 
     Tesselator& t = Tesselator::getInstance();
-    t.begin(GL_QUADS);
+    t.begin(DrawMode::Quads);
     t.color(r, g, b, a);
     t.vertex(static_cast<float>(x0), static_cast<float>(y1), 0.0f);
     t.vertex(static_cast<float>(x1), static_cast<float>(y1), 0.0f);
@@ -84,11 +74,7 @@ void Screen::fill(int x0, int y0, int x1, int y1, int color) {
     t.end();
 
     ShaderManager::getInstance().setUseTexture(true);
-#ifdef MC_RENDERER_METAL
     RenderDevice::get().setBlend(false);
-#else
-    glDisable(GL_BLEND);
-#endif
 }
 
 void Screen::fillGradient(int x0, int y0, int x1, int y1, int colorTop, int colorBottom) {
@@ -102,19 +88,14 @@ void Screen::fillGradient(int x0, int y0, int x1, int y1, int colorTop, int colo
     float g2 = ((colorBottom >> 8) & 0xFF) / 255.0f;
     float b2 = (colorBottom & 0xFF) / 255.0f;
 
-#ifdef MC_RENDERER_METAL
     RenderDevice::get().setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
-#else
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-#endif
 
     ShaderManager::getInstance().useGuiShader();
     ShaderManager::getInstance().updateMatrices();
     ShaderManager::getInstance().setUseTexture(false);
 
     Tesselator& t = Tesselator::getInstance();
-    t.begin(GL_QUADS);
+    t.begin(DrawMode::Quads);
     t.color(r1, g1, b1, a1);
     t.vertex(static_cast<float>(x1), static_cast<float>(y0), 0.0f);
     t.color(r1, g1, b1, a1);
@@ -126,11 +107,7 @@ void Screen::fillGradient(int x0, int y0, int x1, int y1, int colorTop, int colo
     t.end();
 
     ShaderManager::getInstance().setUseTexture(true);
-#ifdef MC_RENDERER_METAL
     RenderDevice::get().setBlend(false);
-#else
-    glDisable(GL_BLEND);
-#endif
 }
 
 } // namespace mc

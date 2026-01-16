@@ -3,13 +3,8 @@
 #include "renderer/Tesselator.hpp"
 #include "renderer/MatrixStack.hpp"
 #include "renderer/ShaderManager.hpp"
-#include <stb_image.h>
-
-#ifdef MC_RENDERER_METAL
 #include "renderer/backend/RenderDevice.hpp"
-#else
-#include <GL/glew.h>
-#endif
+#include <stb_image.h>
 
 namespace mc {
 
@@ -22,11 +17,7 @@ const std::string Font::acceptableLetters =
     "pqrstuvwxyz{|}~";
 
 Font::Font()
-#ifdef MC_RENDERER_METAL
     : fontTexture(nullptr)
-#else
-    : fontTexture(0)
-#endif
     , initialized(false)
 {
     for (int i = 0; i < 256; i++) {
@@ -107,12 +98,7 @@ void Font::draw(const std::string& text, int x, int y, int color, bool darken) {
 
     Textures::getInstance().bind(fontTexture);
 
-#ifdef MC_RENDERER_METAL
     RenderDevice::get().setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
-#else
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-#endif
 
     float r = ((color >> 16) & 0xFF) / 255.0f;
     float g = ((color >> 8) & 0xFF) / 255.0f;
@@ -153,11 +139,7 @@ void Font::draw(const std::string& text, int x, int y, int color, bool darken) {
 
     MatrixStack::modelview().pop();
 
-#ifdef MC_RENDERER_METAL
     RenderDevice::get().setBlend(false);
-#else
-    glDisable(GL_BLEND);
-#endif
 }
 
 void Font::drawShadow(const std::string& text, int x, int y, int color) {
@@ -211,7 +193,7 @@ void Font::drawChar(int charIndex, float x, float y, float r, float g, float b, 
     float v1 = (static_cast<float>(iy) + s) / 128.0f;
 
     Tesselator& t = Tesselator::getInstance();
-    t.begin(GL_QUADS);
+    t.begin(DrawMode::Quads);
     t.color(r, g, b, a);
     t.tex(u0, v1); t.vertex(x, y + s, 0.0f);
     t.tex(u1, v1); t.vertex(x + s, y + s, 0.0f);

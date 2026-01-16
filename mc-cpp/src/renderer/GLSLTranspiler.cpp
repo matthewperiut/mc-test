@@ -28,7 +28,7 @@ std::string GLSLTranspiler::changeVersion(const std::string& source) {
     // Replace #version 450 core with #version 330 core + extension for explicit locations
     std::regex versionRegex(R"(#version\s+450\s+core)");
     return std::regex_replace(source, versionRegex,
-        "#version 330 core\n#extension GL_ARB_explicit_attrib_location : require");
+        "#version 330 core\n#extension GL_ARB_explicit_attrib_locationcontin : require");
 }
 
 std::string GLSLTranspiler::removeLayoutLocations(const std::string& source) {

@@ -4,10 +4,6 @@
 #include "renderer/Tesselator.hpp"
 #include <memory>
 
-#ifndef MC_RENDERER_METAL
-#include <GL/glew.h>
-#endif
-
 namespace mc {
 
 class Level;
@@ -63,11 +59,10 @@ public:
     // Calculate distance to camera
     void calculateDistance(double camX, double camY, double camZ);
 
-    // Delete OpenGL resources
+    // Delete resources
     void dispose();
 
 private:
-#ifdef MC_RENDERER_METAL
     void uploadData(VertexBuffer* vbo, IndexBuffer* ebo,
                     const Tesselator::VertexData& data);
 
@@ -78,21 +73,6 @@ private:
     // RenderDevice buffers for water geometry
     std::unique_ptr<VertexBuffer> waterVBO;
     std::unique_ptr<IndexBuffer> waterEBO;
-#else
-    void setupVAO(GLuint vao, GLuint vbo, GLuint ebo);
-    void uploadData(GLuint vao, GLuint vbo, GLuint ebo,
-                    const Tesselator::VertexData& data);
-
-    // OpenGL VAO/VBO/EBO for solid geometry
-    GLuint solidVAO;
-    GLuint solidVBO;
-    GLuint solidEBO;
-
-    // OpenGL VAO/VBO/EBO for water geometry
-    GLuint waterVAO;
-    GLuint waterVBO;
-    GLuint waterEBO;
-#endif
 
     bool vaoInitialized;
 };

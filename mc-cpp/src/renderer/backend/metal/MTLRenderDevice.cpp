@@ -421,6 +421,13 @@ void MTLRenderDevice::setCullFace(bool enabled, CullMode mode) {
     }
 }
 
+void MTLRenderDevice::setFrontFace(FrontFace face) {
+    if (renderEncoder) {
+        renderEncoder->setFrontFacingWinding(
+            face == FrontFace::CounterClockwise ? MTL::WindingCounterClockwise : MTL::WindingClockwise);
+    }
+}
+
 void MTLRenderDevice::setBlend(bool enabled, BlendFactor src, BlendFactor dst) {
     blendEnabled = enabled;
 
@@ -457,6 +464,13 @@ void MTLRenderDevice::setPolygonOffset(bool enabled, float factor, float units) 
 void MTLRenderDevice::setLineWidth(float width) {
     // Metal doesn't support line width > 1.0
     // Lines are always 1 pixel wide
+}
+
+void MTLRenderDevice::setColorMask(bool r, bool g, bool b, bool a) {
+    // In Metal, color mask is set per-pipeline in the color attachment descriptor
+    // For runtime changes, we'd need to recreate the pipeline or use a different approach
+    // For now, this is a no-op as most Metal pipelines write all channels
+    // The depth-only pass in clouds uses separate blend mode handling
 }
 
 std::unique_ptr<ShaderPipeline> MTLRenderDevice::createShaderPipeline() {

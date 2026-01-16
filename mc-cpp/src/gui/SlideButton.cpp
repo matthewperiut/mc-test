@@ -3,12 +3,7 @@
 #include "renderer/Textures.hpp"
 #include "renderer/Tesselator.hpp"
 #include "renderer/ShaderManager.hpp"
-
-#ifdef MC_RENDERER_METAL
 #include "renderer/backend/RenderDevice.hpp"
-#else
-#include <GL/glew.h>
-#endif
 
 namespace mc {
 
@@ -63,12 +58,7 @@ void SlideButton::render(Font* font, int mouseX, int mouseY) {
 
     Textures::getInstance().bind("resources/gui/gui.png");
 
-#ifdef MC_RENDERER_METAL
     RenderDevice::get().setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
-#else
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-#endif
 
     ShaderManager::getInstance().useGuiShader();
     ShaderManager::getInstance().updateMatrices();
@@ -81,7 +71,7 @@ void SlideButton::render(Font* font, int mouseX, int mouseY) {
     Tesselator& t = Tesselator::getInstance();
 
     // Draw button background using two halves
-    t.begin(GL_QUADS);
+    t.begin(DrawMode::Quads);
     t.color(1.0f, 1.0f, 1.0f, 1.0f);
 
     // Left half
@@ -116,11 +106,7 @@ void SlideButton::render(Font* font, int mouseX, int mouseY) {
     // Render slider knob
     renderSliderKnob(mouseX, mouseY);
 
-#ifdef MC_RENDERER_METAL
     RenderDevice::get().setBlend(false);
-#else
-    glDisable(GL_BLEND);
-#endif
 
     // Draw label text centered
     int textColor = active ? (hovered ? 0xFFFFA0 : 0xE0E0E0) : 0xA0A0A0;
@@ -138,7 +124,7 @@ void SlideButton::renderSliderKnob(int mouseX, int mouseY) {
     int knobTexY = 66;
 
     Tesselator& t = Tesselator::getInstance();
-    t.begin(GL_QUADS);
+    t.begin(DrawMode::Quads);
     t.color(1.0f, 1.0f, 1.0f, 1.0f);
 
     // Left part of knob: 4 pixels wide from texture (0, 66)

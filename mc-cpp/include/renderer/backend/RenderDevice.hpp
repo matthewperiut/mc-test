@@ -33,6 +33,7 @@ public:
 
     // Culling
     virtual void setCullFace(bool enabled, CullMode mode = CullMode::Back) = 0;
+    virtual void setFrontFace(FrontFace face) = 0;
 
     // Blending
     virtual void setBlend(bool enabled, BlendFactor src = BlendFactor::SrcAlpha,
@@ -43,6 +44,9 @@ public:
 
     // Line width
     virtual void setLineWidth(float width) = 0;
+
+    // Color mask (for depth-only passes)
+    virtual void setColorMask(bool r, bool g, bool b, bool a) = 0;
 
     // Factory methods
     virtual std::unique_ptr<ShaderPipeline> createShaderPipeline() = 0;

@@ -93,6 +93,10 @@ void GLRenderDevice::setCullFace(bool enabled, CullMode mode) {
     }
 }
 
+void GLRenderDevice::setFrontFace(FrontFace face) {
+    glFrontFace(face == FrontFace::CounterClockwise ? GL_CCW : GL_CW);
+}
+
 void GLRenderDevice::setBlend(bool enabled, BlendFactor src, BlendFactor dst) {
     if (enabled) {
         glEnable(GL_BLEND);
@@ -113,6 +117,11 @@ void GLRenderDevice::setPolygonOffset(bool enabled, float factor, float units) {
 
 void GLRenderDevice::setLineWidth(float width) {
     glLineWidth(width);
+}
+
+void GLRenderDevice::setColorMask(bool r, bool g, bool b, bool a) {
+    glColorMask(r ? GL_TRUE : GL_FALSE, g ? GL_TRUE : GL_FALSE,
+                b ? GL_TRUE : GL_FALSE, a ? GL_TRUE : GL_FALSE);
 }
 
 std::unique_ptr<ShaderPipeline> GLRenderDevice::createShaderPipeline() {

@@ -6,15 +6,10 @@
 #include "renderer/LevelRenderer.hpp"
 #include "renderer/MatrixStack.hpp"
 #include "renderer/ShaderManager.hpp"
+#include "renderer/backend/RenderDevice.hpp"
 #include "audio/SoundEngine.hpp"
 #include <GLFW/glfw3.h>
 #include <cmath>
-
-#ifdef MC_RENDERER_METAL
-#include "renderer/backend/RenderDevice.hpp"
-#else
-#include <GL/glew.h>
-#endif
 
 namespace mc {
 
@@ -210,16 +205,9 @@ void OptionsScreen::render(int mx, int my, float partialTick) {
     MatrixStack::modelview().translate(0.0f, 0.0f, -2000.0f);
 
     // Set up 2D rendering state
-#ifdef MC_RENDERER_METAL
     RenderDevice::get().setDepthTest(false);
     RenderDevice::get().setCullFace(false);
     RenderDevice::get().setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
-#else
-    glDisable(GL_DEPTH_TEST);
-    glDisable(GL_CULL_FACE);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-#endif
 
     ShaderManager::getInstance().useGuiShader();
     ShaderManager::getInstance().updateMatrices();
@@ -241,13 +229,8 @@ void OptionsScreen::render(int mx, int my, float partialTick) {
     MatrixStack::modelview().pop();
 
     // Restore 3D state
-#ifdef MC_RENDERER_METAL
     RenderDevice::get().setDepthTest(true);
     RenderDevice::get().setCullFace(true);
-#else
-    glEnable(GL_DEPTH_TEST);
-    glEnable(GL_CULL_FACE);
-#endif
 }
 
 void OptionsScreen::removed() {
@@ -368,11 +351,7 @@ void OptionsScreen::buttonClicked(int buttonId) {
 
         case BUTTON_VSYNC:
             minecraft->options.vsync = !minecraft->options.vsync;
-#ifdef MC_RENDERER_METAL
             RenderDevice::get().setVsync(minecraft->options.vsync);
-#else
-            glfwSwapInterval(minecraft->options.vsync ? 1 : 0);
-#endif
             updateButtonLabels();
             break;
 

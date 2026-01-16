@@ -4,20 +4,11 @@
 #include <unordered_map>
 #include <memory>
 
-#ifdef MC_RENDERER_METAL
 #include "renderer/backend/Texture.hpp"
-#else
-#include <GL/glew.h>
-#endif
 
 namespace mc {
 
-#ifdef MC_RENDERER_METAL
-class Texture;
 using TextureHandle = Texture*;
-#else
-using TextureHandle = GLuint;
-#endif
 
 class Textures {
 public:
@@ -54,21 +45,9 @@ private:
     Textures(const Textures&) = delete;
     Textures& operator=(const Textures&) = delete;
 
-#ifdef MC_RENDERER_METAL
     std::unordered_map<std::string, std::unique_ptr<Texture>> textureCache;
 
     Texture* loadTextureFromFile(const std::string& path, bool useMipmaps);
-#else
-    struct TextureInfo {
-        int width;
-        int height;
-    };
-
-    std::unordered_map<std::string, GLuint> textureCache;
-    std::unordered_map<GLuint, TextureInfo> textureInfo;
-
-    GLuint loadTextureFromFile(const std::string& path, bool useMipmaps);
-#endif
 };
 
 } // namespace mc

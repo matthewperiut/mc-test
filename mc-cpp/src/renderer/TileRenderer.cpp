@@ -188,7 +188,7 @@ void TileRenderer::renderTileForGUI(Tile* tile, int data) {
 
         // Bottom face (Y=0) - Java: normal(0, -1, 0), renderFaceUp
         getUV(tile->getTexture(0, data), u0, v0, u1, v1);
-        t.begin(GL_QUADS);
+        t.begin(DrawMode::Quads);
         t.normal(0.0f, -1.0f, 0.0f);
         t.color(1.0f, 1.0f, 1.0f);
         t.vertexUV(0+ox, 0+oy, 1+oz, u0, v1);
@@ -199,7 +199,7 @@ void TileRenderer::renderTileForGUI(Tile* tile, int data) {
 
         // Top face (Y=1) - Java: normal(0, 1, 0), renderFaceDown
         getUV(tile->getTexture(1, data), u0, v0, u1, v1);
-        t.begin(GL_QUADS);
+        t.begin(DrawMode::Quads);
         t.normal(0.0f, 1.0f, 0.0f);
         if (tile->id == Tile::GRASS) {
             t.color(0.486f, 0.741f, 0.420f);  // Grass tint
@@ -214,7 +214,7 @@ void TileRenderer::renderTileForGUI(Tile* tile, int data) {
 
         // North face (Z=0) - Java: normal(0, 0, -1), renderNorth
         getUV(tile->getTexture(2, data), u0, v0, u1, v1);
-        t.begin(GL_QUADS);
+        t.begin(DrawMode::Quads);
         t.normal(0.0f, 0.0f, -1.0f);
         t.color(1.0f, 1.0f, 1.0f);
         t.vertexUV(0+ox, 1+oy, 0+oz, u1, v0);
@@ -225,7 +225,7 @@ void TileRenderer::renderTileForGUI(Tile* tile, int data) {
 
         // South face (Z=1) - Java: normal(0, 0, 1), renderSouth
         getUV(tile->getTexture(3, data), u0, v0, u1, v1);
-        t.begin(GL_QUADS);
+        t.begin(DrawMode::Quads);
         t.normal(0.0f, 0.0f, 1.0f);
         t.color(1.0f, 1.0f, 1.0f);
         t.vertexUV(0+ox, 1+oy, 1+oz, u0, v0);
@@ -236,7 +236,7 @@ void TileRenderer::renderTileForGUI(Tile* tile, int data) {
 
         // West face (X=0) - Java: normal(-1, 0, 0), renderWest
         getUV(tile->getTexture(4, data), u0, v0, u1, v1);
-        t.begin(GL_QUADS);
+        t.begin(DrawMode::Quads);
         t.normal(-1.0f, 0.0f, 0.0f);
         t.color(1.0f, 1.0f, 1.0f);
         t.vertexUV(0+ox, 1+oy, 1+oz, u1, v0);
@@ -247,7 +247,7 @@ void TileRenderer::renderTileForGUI(Tile* tile, int data) {
 
         // East face (X=1) - Java: normal(1, 0, 0), renderEast
         getUV(tile->getTexture(5, data), u0, v0, u1, v1);
-        t.begin(GL_QUADS);
+        t.begin(DrawMode::Quads);
         t.normal(1.0f, 0.0f, 0.0f);
         t.color(1.0f, 1.0f, 1.0f);
         t.vertexUV(1+ox, 0+oy, 1+oz, u0, v1);
@@ -257,7 +257,7 @@ void TileRenderer::renderTileForGUI(Tile* tile, int data) {
         t.end();
     } else {
         // Cross-shaped block (flowers, etc.) - Java: normal(0, -1, 0)
-        t.begin(GL_QUADS);
+        t.begin(DrawMode::Quads);
         t.normal(0.0f, -1.0f, 0.0f);
         t.color(1.0f, 1.0f, 1.0f);
         renderCross(tile, 0, 0, 0);
@@ -287,7 +287,7 @@ void TileRenderer::renderTileForGUIWithColors(Tile* tile, int data) {
 
         // Bottom face (Y=0)
         getUV(tile->getTexture(0, data), u0, v0, u1, v1);
-        t.begin(GL_QUADS);
+        t.begin(DrawMode::Quads);
         t.color(brightBottom, brightBottom, brightBottom);
         t.vertexUV(0+ox, 0+oy, 1+oz, u0, v1);
         t.vertexUV(0+ox, 0+oy, 0+oz, u0, v0);
@@ -297,7 +297,7 @@ void TileRenderer::renderTileForGUIWithColors(Tile* tile, int data) {
 
         // Top face (Y=1)
         getUV(tile->getTexture(1, data), u0, v0, u1, v1);
-        t.begin(GL_QUADS);
+        t.begin(DrawMode::Quads);
         if (tile->id == Tile::GRASS) {
             t.color(brightTop * 0.486f, brightTop * 0.741f, brightTop * 0.420f);
         } else {
@@ -311,7 +311,7 @@ void TileRenderer::renderTileForGUIWithColors(Tile* tile, int data) {
 
         // North face (Z=0)
         getUV(tile->getTexture(2, data), u0, v0, u1, v1);
-        t.begin(GL_QUADS);
+        t.begin(DrawMode::Quads);
         t.color(brightNorth, brightNorth, brightNorth);
         t.vertexUV(0+ox, 1+oy, 0+oz, u1, v0);
         t.vertexUV(1+ox, 1+oy, 0+oz, u0, v0);
@@ -321,7 +321,7 @@ void TileRenderer::renderTileForGUIWithColors(Tile* tile, int data) {
 
         // South face (Z=1)
         getUV(tile->getTexture(3, data), u0, v0, u1, v1);
-        t.begin(GL_QUADS);
+        t.begin(DrawMode::Quads);
         t.color(brightSouth, brightSouth, brightSouth);
         t.vertexUV(0+ox, 1+oy, 1+oz, u0, v0);
         t.vertexUV(0+ox, 0+oy, 1+oz, u0, v1);
@@ -331,7 +331,7 @@ void TileRenderer::renderTileForGUIWithColors(Tile* tile, int data) {
 
         // West face (X=0)
         getUV(tile->getTexture(4, data), u0, v0, u1, v1);
-        t.begin(GL_QUADS);
+        t.begin(DrawMode::Quads);
         t.color(brightWest, brightWest, brightWest);
         t.vertexUV(0+ox, 1+oy, 1+oz, u1, v0);
         t.vertexUV(0+ox, 1+oy, 0+oz, u0, v0);
@@ -341,7 +341,7 @@ void TileRenderer::renderTileForGUIWithColors(Tile* tile, int data) {
 
         // East face (X=1)
         getUV(tile->getTexture(5, data), u0, v0, u1, v1);
-        t.begin(GL_QUADS);
+        t.begin(DrawMode::Quads);
         t.color(brightEast, brightEast, brightEast);
         t.vertexUV(1+ox, 0+oy, 1+oz, u0, v1);
         t.vertexUV(1+ox, 0+oy, 0+oz, u1, v1);
@@ -350,7 +350,7 @@ void TileRenderer::renderTileForGUIWithColors(Tile* tile, int data) {
         t.end();
     } else {
         // Cross-shaped block (flowers, etc.)
-        t.begin(GL_QUADS);
+        t.begin(DrawMode::Quads);
         t.color(1.0f, 1.0f, 1.0f);
         renderCross(tile, 0, 0, 0);
         t.end();

@@ -22,6 +22,11 @@ enum class CullMode {
     Front
 };
 
+enum class FrontFace {
+    CounterClockwise,
+    Clockwise
+};
+
 enum class BlendFactor {
     Zero,
     One,
@@ -45,6 +50,17 @@ enum class PrimitiveType {
     Triangles,
     Lines,
     LineStrip,
+    Points
+};
+
+// Draw modes for Tesselator (includes legacy modes that get converted to PrimitiveType)
+enum class DrawMode {
+    Quads,        // Converted to triangles
+    Triangles,
+    TriangleFan,  // Converted to triangles
+    Lines,
+    LineStrip,
+    LineLoop,
     Points
 };
 

@@ -6,14 +6,9 @@
 #include "renderer/Textures.hpp"
 #include "renderer/Tesselator.hpp"
 #include "renderer/ShaderManager.hpp"
+#include "renderer/backend/RenderDevice.hpp"
 #include "util/Mth.hpp"
 #include <cmath>
-
-#ifdef MC_RENDERER_METAL
-#include "renderer/backend/RenderDevice.hpp"
-#else
-#include <GL/glew.h>
-#endif
 
 namespace mc {
 
@@ -78,12 +73,7 @@ void ParticleEngine::render(Entity* player, float partialTick) {
     float ya = Mth::cos(xRotRad);
 
     // Enable blending for particles
-#ifdef MC_RENDERER_METAL
     RenderDevice::get().setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
-#else
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-#endif
 
     ShaderManager::getInstance().useWorldShader();
     ShaderManager::getInstance().setAlphaTest(0.01f);
@@ -104,7 +94,7 @@ void ParticleEngine::render(Entity* player, float partialTick) {
             Textures::getInstance().bind("resources/gui/items.png", 0, false);  // No mipmaps for items
         }
 
-        t.begin(GL_QUADS);
+        t.begin(DrawMode::Quads);
 
         for (const auto& particle : particles[tt]) {
             // Calculate texture coordinates (16x16 grid)
@@ -146,11 +136,7 @@ void ParticleEngine::render(Entity* player, float partialTick) {
     }
 
     // Restore state
-#ifdef MC_RENDERER_METAL
     RenderDevice::get().setBlend(false);
-#else
-    glDisable(GL_BLEND);
-#endif
 }
 
 int ParticleEngine::getParticleCount() const {

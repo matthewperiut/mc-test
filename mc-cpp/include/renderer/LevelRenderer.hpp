@@ -8,7 +8,7 @@
 #include <vector>
 #include <memory>
 #include <array>
-#include <GL/glew.h>
+#include <cstdint>
 
 namespace mc {
 
@@ -91,12 +91,10 @@ private:
     void disposeChunks();
     void sortChunks();
 
-    // Sky VAO initialization and building
+    // Sky rendering initialization
     void initSkyVAOs();
     void disposeSkyVAOs();
-    void buildStarVAO();
-    void buildSkyVAO();
-    void buildDarkVAO();
+    void buildStarData();
     float getTimeOfDay() const;
     std::array<float, 4> getSunriseColor(float timeOfDay) const;
     float getStarBrightness(float timeOfDay) const;
@@ -104,10 +102,13 @@ private:
     // Entity rendering helpers
     void renderDroppedItemSprite(int icon, int copies, float playerYRot, unsigned int randomSeed);
 
-    // Sky VAOs (replacing display lists)
-    GLuint starVAO, starVBO, starEBO;
-    GLuint skyVAO, skyVBO, skyEBO;
-    GLuint darkVAO, darkVBO, darkEBO;
+    // Star vertex data for rendering via Tesselator
+    std::vector<float> starVertices;
+
+    // Legacy VAO handles (kept for initialization, not used)
+    uint32_t starVAO, starVBO, starEBO;
+    uint32_t skyVAO, skyVBO, skyEBO;
+    uint32_t darkVAO, darkVBO, darkEBO;
     int starIndexCount;
     int skyIndexCount;
     int darkIndexCount;

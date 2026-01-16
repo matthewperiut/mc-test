@@ -7,17 +7,12 @@
 #include "renderer/Tesselator.hpp"
 #include "renderer/MatrixStack.hpp"
 #include "renderer/ShaderManager.hpp"
+#include "renderer/backend/RenderDevice.hpp"
 #include "world/tile/Tile.hpp"
 #include "item/Item.hpp"
 #include <GLFW/glfw3.h>
 #include <algorithm>
 #include <cctype>
-
-#ifdef MC_RENDERER_METAL
-#include "renderer/backend/RenderDevice.hpp"
-#else
-#include <GL/glew.h>
-#endif
 
 namespace mc {
 
@@ -52,16 +47,9 @@ void InventoryScreen::render(int mx, int my, float /*partialTick*/) {
     MatrixStack::modelview().translate(0.0f, 0.0f, -2000.0f);
 
     // Set up 2D rendering state
-#ifdef MC_RENDERER_METAL
     RenderDevice::get().setDepthTest(false);
     RenderDevice::get().setCullFace(false);
     RenderDevice::get().setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
-#else
-    glDisable(GL_DEPTH_TEST);
-    glDisable(GL_CULL_FACE);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-#endif
 
     ShaderManager::getInstance().useGuiShader();
     ShaderManager::getInstance().updateMatrices();
@@ -91,32 +79,18 @@ void InventoryScreen::render(int mx, int my, float /*partialTick*/) {
     MatrixStack::modelview().pop();
 
     // Restore 3D state
-#ifdef MC_RENDERER_METAL
     RenderDevice::get().setDepthTest(true);
     RenderDevice::get().setCullFace(true);
-#else
-    glEnable(GL_DEPTH_TEST);
-    glEnable(GL_CULL_FACE);
-#endif
 }
 
 void InventoryScreen::renderBackground() {
     Textures::getInstance().bind("resources/gui/inventory.png");
 
-#ifdef MC_RENDERER_METAL
     RenderDevice::get().setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
-#else
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-#endif
 
     blit(guiLeft, guiTop, 0, 0, GUI_WIDTH, GUI_HEIGHT);
 
-#ifdef MC_RENDERER_METAL
     RenderDevice::get().setBlend(false);
-#else
-    glDisable(GL_BLEND);
-#endif
 }
 
 void InventoryScreen::renderSlots() {
@@ -200,7 +174,7 @@ void InventoryScreen::blit(int x, int y, int u, int v, int w, int h) {
     float v1 = static_cast<float>(v + h) / texHeight;
 
     Tesselator& t = Tesselator::getInstance();
-    t.begin(GL_QUADS);
+    t.begin(DrawMode::Quads);
     t.color(1.0f, 1.0f, 1.0f, 1.0f);
     t.tex(u0, v0); t.vertex(static_cast<float>(x), static_cast<float>(y), 0.0f);
     t.tex(u1, v0); t.vertex(static_cast<float>(x + w), static_cast<float>(y), 0.0f);
@@ -210,21 +184,15 @@ void InventoryScreen::blit(int x, int y, int u, int v, int w, int h) {
 }
 
 void InventoryScreen::renderSlotHighlight(int x, int y) {
-#ifdef MC_RENDERER_METAL
     RenderDevice::get().setDepthTest(false);
     RenderDevice::get().setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
-#else
-    glDisable(GL_DEPTH_TEST);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-#endif
 
     ShaderManager::getInstance().useGuiShader();
     ShaderManager::getInstance().updateMatrices();
     ShaderManager::getInstance().setUseTexture(false);
 
     Tesselator& t = Tesselator::getInstance();
-    t.begin(GL_QUADS);
+    t.begin(DrawMode::Quads);
     t.color(1.0f, 1.0f, 1.0f, 0.5f);
     t.vertex(static_cast<float>(x), static_cast<float>(y), 200.0f);
     t.vertex(static_cast<float>(x + 16), static_cast<float>(y), 200.0f);
@@ -233,11 +201,7 @@ void InventoryScreen::renderSlotHighlight(int x, int y) {
     t.end();
 
     ShaderManager::getInstance().setUseTexture(true);
-#ifdef MC_RENDERER_METAL
     RenderDevice::get().setBlend(false);
-#else
-    glDisable(GL_BLEND);
-#endif
 }
 
 void InventoryScreen::renderTooltip() {
@@ -278,15 +242,10 @@ void InventoryScreen::renderTooltip() {
     ShaderManager::getInstance().updateMatrices();
     ShaderManager::getInstance().setUseTexture(false);
 
-#ifdef MC_RENDERER_METAL
     RenderDevice::get().setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
-#else
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-#endif
 
     Tesselator& t = Tesselator::getInstance();
-    t.begin(GL_QUADS);
+    t.begin(DrawMode::Quads);
     t.color(0.0f, 0.0f, 0.0f, 0.75f);
     t.vertex(static_cast<float>(tooltipX - 3), static_cast<float>(tooltipY - 3), 0.0f);
     t.vertex(static_cast<float>(tooltipX + textWidth + 3), static_cast<float>(tooltipY - 3), 0.0f);
@@ -295,11 +254,7 @@ void InventoryScreen::renderTooltip() {
     t.end();
 
     ShaderManager::getInstance().setUseTexture(true);
-#ifdef MC_RENDERER_METAL
     RenderDevice::get().setBlend(false);
-#else
-    glDisable(GL_BLEND);
-#endif
 
     font->drawShadow(itemName, tooltipX, tooltipY, 0xFFFFFF);
 }

@@ -13,9 +13,6 @@
 #include "item/Item.hpp"
 #include "util/Mth.hpp"
 #include "renderer/backend/RenderDevice.hpp"
-#ifndef MC_RENDERER_METAL
-#include <GL/glew.h>
-#endif
 #include <cstdio>
 #include <algorithm>
 #include <cmath>
@@ -357,7 +354,7 @@ void GameRenderer::renderBreakingAnimation(float progress) {
     Tesselator& t = Tesselator::getInstance();
 
     // Bottom face
-    t.begin(GL_QUADS);
+    t.begin(DrawMode::Quads);
     t.color(1.0f, 1.0f, 1.0f, 1.0f);
     t.tex(texU, texV + texSize); t.vertex(x0 - e, y0 - e, z1 + e);
     t.tex(texU + texSize, texV + texSize); t.vertex(x1 + e, y0 - e, z1 + e);
@@ -366,7 +363,7 @@ void GameRenderer::renderBreakingAnimation(float progress) {
     t.end();
 
     // Top face
-    t.begin(GL_QUADS);
+    t.begin(DrawMode::Quads);
     t.color(1.0f, 1.0f, 1.0f, 1.0f);
     t.tex(texU, texV); t.vertex(x0 - e, y1 + e, z0 - e);
     t.tex(texU + texSize, texV); t.vertex(x1 + e, y1 + e, z0 - e);
@@ -375,7 +372,7 @@ void GameRenderer::renderBreakingAnimation(float progress) {
     t.end();
 
     // North face
-    t.begin(GL_QUADS);
+    t.begin(DrawMode::Quads);
     t.color(1.0f, 1.0f, 1.0f, 1.0f);
     t.tex(texU + texSize, texV); t.vertex(x0 - e, y1 + e, z0 - e);
     t.tex(texU, texV); t.vertex(x1 + e, y1 + e, z0 - e);
@@ -384,7 +381,7 @@ void GameRenderer::renderBreakingAnimation(float progress) {
     t.end();
 
     // South face
-    t.begin(GL_QUADS);
+    t.begin(DrawMode::Quads);
     t.color(1.0f, 1.0f, 1.0f, 1.0f);
     t.tex(texU, texV); t.vertex(x0 - e, y1 + e, z1 + e);
     t.tex(texU, texV + texSize); t.vertex(x0 - e, y0 - e, z1 + e);
@@ -393,7 +390,7 @@ void GameRenderer::renderBreakingAnimation(float progress) {
     t.end();
 
     // West face
-    t.begin(GL_QUADS);
+    t.begin(DrawMode::Quads);
     t.color(1.0f, 1.0f, 1.0f, 1.0f);
     t.tex(texU + texSize, texV); t.vertex(x0 - e, y1 + e, z1 + e);
     t.tex(texU, texV); t.vertex(x0 - e, y1 + e, z0 - e);
@@ -402,7 +399,7 @@ void GameRenderer::renderBreakingAnimation(float progress) {
     t.end();
 
     // East face
-    t.begin(GL_QUADS);
+    t.begin(DrawMode::Quads);
     t.color(1.0f, 1.0f, 1.0f, 1.0f);
     t.tex(texU, texV); t.vertex(x1 + e, y1 + e, z0 - e);
     t.tex(texU + texSize, texV); t.vertex(x1 + e, y1 + e, z1 + e);
@@ -534,7 +531,7 @@ void GameRenderer::renderHitOutline() {
     float fovRadians = 70.0f * 3.14159265f / 180.0f;  // 70 degree FOV in radians
 
     Tesselator& t = Tesselator::getInstance();
-    t.begin(GL_TRIANGLES);
+    t.begin(DrawMode::Triangles);
     t.color(0.0f, 0.0f, 0.0f, 0.4f);
 
     // Bottom face edges (4 lines)
@@ -791,7 +788,7 @@ void GameRenderer::renderArmModel(float scale) {
         float u1 = (texU + d + w + d) / 64.0f - us;
         float v1 = (texV + d + h) / 32.0f - vs;
 
-        t.begin(GL_QUADS);
+        t.begin(DrawMode::Quads);
         t.color(1.0f, 1.0f, 1.0f, 1.0f);
         t.normal(1.0f, 0.0f, 0.0f);
         t.tex(u1, v0); t.vertex(x1, y0, z1);
@@ -808,7 +805,7 @@ void GameRenderer::renderArmModel(float scale) {
         float u1 = (texU + d) / 64.0f - us;
         float v1 = (texV + d + h) / 32.0f - vs;
 
-        t.begin(GL_QUADS);
+        t.begin(DrawMode::Quads);
         t.color(1.0f, 1.0f, 1.0f, 1.0f);
         t.normal(-1.0f, 0.0f, 0.0f);
         t.tex(u1, v0); t.vertex(x0, y0, z0);
@@ -825,7 +822,7 @@ void GameRenderer::renderArmModel(float scale) {
         float u1 = (texU + d + w) / 64.0f - us;
         float v1 = (texV + d) / 32.0f - vs;
 
-        t.begin(GL_QUADS);
+        t.begin(DrawMode::Quads);
         t.color(1.0f, 1.0f, 1.0f, 1.0f);
         t.normal(0.0f, -1.0f, 0.0f);
         t.tex(u1, v0); t.vertex(x1, y0, z1);
@@ -842,7 +839,7 @@ void GameRenderer::renderArmModel(float scale) {
         float u1 = (texU + d + w + w) / 64.0f - us;
         float v1 = (texV + d) / 32.0f - vs;
 
-        t.begin(GL_QUADS);
+        t.begin(DrawMode::Quads);
         t.color(1.0f, 1.0f, 1.0f, 1.0f);
         t.normal(0.0f, 1.0f, 0.0f);
         t.tex(u0, v0); t.vertex(x1, y1, z0);
@@ -859,7 +856,7 @@ void GameRenderer::renderArmModel(float scale) {
         float u1 = (texU + d + w) / 64.0f - us;
         float v1 = (texV + d + h) / 32.0f - vs;
 
-        t.begin(GL_QUADS);
+        t.begin(DrawMode::Quads);
         t.color(1.0f, 1.0f, 1.0f, 1.0f);
         t.normal(0.0f, 0.0f, -1.0f);
         t.tex(u1, v0); t.vertex(x1, y0, z0);
@@ -876,7 +873,7 @@ void GameRenderer::renderArmModel(float scale) {
         float u1 = (texU + d + w + d + w) / 64.0f - us;
         float v1 = (texV + d + h) / 32.0f - vs;
 
-        t.begin(GL_QUADS);
+        t.begin(DrawMode::Quads);
         t.color(1.0f, 1.0f, 1.0f, 1.0f);
         t.normal(0.0f, 0.0f, 1.0f);
         t.tex(u0, v0); t.vertex(x0, y0, z1);
@@ -923,7 +920,7 @@ void GameRenderer::renderItem(const ItemStack& item) {
             Tesselator& t = Tesselator::getInstance();
 
             // Front face
-            t.begin(GL_QUADS);
+            t.begin(DrawMode::Quads);
             t.color(1.0f, 1.0f, 1.0f, 1.0f);
             t.normal(0.0f, 0.0f, 1.0f);
             t.tex(u1, v1); t.vertex(0.0f, 0.0f, 0.0f);
@@ -933,7 +930,7 @@ void GameRenderer::renderItem(const ItemStack& item) {
             t.end();
 
             // Back face
-            t.begin(GL_QUADS);
+            t.begin(DrawMode::Quads);
             t.color(1.0f, 1.0f, 1.0f, 1.0f);
             t.normal(0.0f, 0.0f, -1.0f);
             t.tex(u1, v0); t.vertex(0.0f, 1.0f, -dd);
@@ -948,7 +945,7 @@ void GameRenderer::renderItem(const ItemStack& item) {
                 float uu = u1 + (u0 - u1) * p - 0.001953125f;
                 float xx = r * p;
 
-                t.begin(GL_QUADS);
+                t.begin(DrawMode::Quads);
                 t.color(1.0f, 1.0f, 1.0f, 1.0f);
                 t.normal(-1.0f, 0.0f, 0.0f);
                 t.tex(uu, v1); t.vertex(xx, 0.0f, -dd);
@@ -963,7 +960,7 @@ void GameRenderer::renderItem(const ItemStack& item) {
                 float uu = u1 + (u0 - u1) * p - 0.001953125f;
                 float xx = r * p + 0.0625f;
 
-                t.begin(GL_QUADS);
+                t.begin(DrawMode::Quads);
                 t.color(1.0f, 1.0f, 1.0f, 1.0f);
                 t.normal(1.0f, 0.0f, 0.0f);
                 t.tex(uu, v0); t.vertex(xx, 1.0f, -dd);
@@ -978,7 +975,7 @@ void GameRenderer::renderItem(const ItemStack& item) {
                 float vv = v1 + (v0 - v1) * p - 0.001953125f;
                 float yy = r * p + 0.0625f;
 
-                t.begin(GL_QUADS);
+                t.begin(DrawMode::Quads);
                 t.color(1.0f, 1.0f, 1.0f, 1.0f);
                 t.normal(0.0f, 1.0f, 0.0f);
                 t.tex(u1, vv); t.vertex(0.0f, yy, 0.0f);
@@ -993,7 +990,7 @@ void GameRenderer::renderItem(const ItemStack& item) {
                 float vv = v1 + (v0 - v1) * p - 0.001953125f;
                 float yy = r * p;
 
-                t.begin(GL_QUADS);
+                t.begin(DrawMode::Quads);
                 t.color(1.0f, 1.0f, 1.0f, 1.0f);
                 t.normal(0.0f, -1.0f, 0.0f);
                 t.tex(u0, vv); t.vertex(r, yy, 0.0f);
@@ -1029,7 +1026,7 @@ void GameRenderer::renderItem(const ItemStack& item) {
         Tesselator& t = Tesselator::getInstance();
 
         // Front face
-        t.begin(GL_QUADS);
+        t.begin(DrawMode::Quads);
         t.color(1.0f, 1.0f, 1.0f, 1.0f);
         t.normal(0.0f, 0.0f, 1.0f);
         t.tex(u1, v1); t.vertex(0.0f, 0.0f, 0.0f);
@@ -1039,7 +1036,7 @@ void GameRenderer::renderItem(const ItemStack& item) {
         t.end();
 
         // Back face
-        t.begin(GL_QUADS);
+        t.begin(DrawMode::Quads);
         t.color(1.0f, 1.0f, 1.0f, 1.0f);
         t.normal(0.0f, 0.0f, -1.0f);
         t.tex(u1, v0); t.vertex(0.0f, 1.0f, -dd);
@@ -1054,7 +1051,7 @@ void GameRenderer::renderItem(const ItemStack& item) {
             float uu = u1 + (u0 - u1) * p - 0.001953125f;
             float xx = r * p;
 
-            t.begin(GL_QUADS);
+            t.begin(DrawMode::Quads);
             t.color(1.0f, 1.0f, 1.0f, 1.0f);
             t.normal(-1.0f, 0.0f, 0.0f);
             t.tex(uu, v1); t.vertex(xx, 0.0f, -dd);
@@ -1069,7 +1066,7 @@ void GameRenderer::renderItem(const ItemStack& item) {
             float uu = u1 + (u0 - u1) * p - 0.001953125f;
             float xx = r * p + 0.0625f;
 
-            t.begin(GL_QUADS);
+            t.begin(DrawMode::Quads);
             t.color(1.0f, 1.0f, 1.0f, 1.0f);
             t.normal(1.0f, 0.0f, 0.0f);
             t.tex(uu, v0); t.vertex(xx, 1.0f, -dd);
@@ -1084,7 +1081,7 @@ void GameRenderer::renderItem(const ItemStack& item) {
             float vv = v1 + (v0 - v1) * p - 0.001953125f;
             float yy = r * p + 0.0625f;
 
-            t.begin(GL_QUADS);
+            t.begin(DrawMode::Quads);
             t.color(1.0f, 1.0f, 1.0f, 1.0f);
             t.normal(0.0f, 1.0f, 0.0f);
             t.tex(u1, vv); t.vertex(0.0f, yy, 0.0f);
@@ -1099,7 +1096,7 @@ void GameRenderer::renderItem(const ItemStack& item) {
             float vv = v1 + (v0 - v1) * p - 0.001953125f;
             float yy = r * p;
 
-            t.begin(GL_QUADS);
+            t.begin(DrawMode::Quads);
             t.color(1.0f, 1.0f, 1.0f, 1.0f);
             t.normal(0.0f, -1.0f, 0.0f);
             t.tex(u0, vv); t.vertex(r, yy, 0.0f);

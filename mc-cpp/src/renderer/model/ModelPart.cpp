@@ -170,7 +170,7 @@ void ModelPart::render(Tesselator& t, float scale, float r, float g, float b, fl
 
     // Render all quads - each face as a separate quad
     for (const auto& quad : quads) {
-        t.begin(GL_QUADS);
+        t.begin(DrawMode::Quads);
         t.color(r, g, b, a);
 
         for (int i = 0; i < 4; ++i) {

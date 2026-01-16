@@ -8,17 +8,12 @@
 #include "renderer/Tesselator.hpp"
 #include "renderer/MatrixStack.hpp"
 #include "renderer/ShaderManager.hpp"
+#include "renderer/backend/RenderDevice.hpp"
 #include "world/tile/Tile.hpp"
 #include "item/Inventory.hpp"
 #include "item/Item.hpp"
 #include <sstream>
 #include <iomanip>
-
-#ifdef MC_RENDERER_METAL
-#include "renderer/backend/RenderDevice.hpp"
-#else
-#include <GL/glew.h>
-#endif
 
 namespace mc {
 
@@ -77,16 +72,10 @@ void Gui::render(float partialTick) {
 
     setupOrtho();
 
-#ifdef MC_RENDERER_METAL
-    RenderDevice::get().setDepthTest(false);
-    RenderDevice::get().setCullFace(false);
-    RenderDevice::get().setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
-#else
-    glDisable(GL_DEPTH_TEST);
-    glDisable(GL_CULL_FACE);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-#endif
+    auto& device = RenderDevice::get();
+    device.setDepthTest(false);
+    device.setCullFace(false);
+    device.setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
 
     ShaderManager::getInstance().useGuiShader();
     ShaderManager::getInstance().updateMatrices();
@@ -117,11 +106,7 @@ void Gui::render(float partialTick) {
             }
         }
 
-#ifdef MC_RENDERER_METAL
-        RenderDevice::get().setCullFace(true);
-#else
-        glEnable(GL_CULL_FACE);
-#endif
+        device.setCullFace(true);
     }
 
     // Switch back to gui shader after inventory item rendering
@@ -131,20 +116,11 @@ void Gui::render(float partialTick) {
 
     Textures::getInstance().bind("resources/gui/icons.png");
 
-#ifdef MC_RENDERER_METAL
-    RenderDevice::get().setBlend(true, BlendFactor::OneMinusDstColor, BlendFactor::OneMinusSrcColor);
-#else
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ONE_MINUS_SRC_COLOR);
-#endif
+    device.setBlend(true, BlendFactor::OneMinusDstColor, BlendFactor::OneMinusSrcColor);
 
     blit(scaledWidth / 2 - 7, scaledHeight / 2 - 7, 0, 0, 16, 16);
 
-#ifdef MC_RENDERER_METAL
-    RenderDevice::get().setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
-#else
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-#endif
+    device.setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
 
     if (player) {
         renderHearts();
@@ -157,15 +133,9 @@ void Gui::render(float partialTick) {
         font.drawShadow("Minecraft Beta 1.2_02 (C++)", 2, 2, 0xFFFFFF);
     }
 
-#ifdef MC_RENDERER_METAL
-    RenderDevice::get().setBlend(false);
-    RenderDevice::get().setDepthTest(true);
-    RenderDevice::get().setCullFace(true);
-#else
-    glDisable(GL_BLEND);
-    glEnable(GL_DEPTH_TEST);
-    glEnable(GL_CULL_FACE);
-#endif
+    device.setBlend(false);
+    device.setDepthTest(true);
+    device.setCullFace(true);
 
     restoreProjection();
 }
@@ -186,11 +156,8 @@ void Gui::restoreProjection() {
 }
 
 void Gui::bindTexture(GLuint texture) {
-#ifndef MC_RENDERER_METAL
-    glBindTexture(GL_TEXTURE_2D, texture);
-#else
     (void)texture;
-#endif
+    // Legacy function - textures are now bound through Textures::getInstance().bind()
 }
 
 void Gui::fill(int x0, int y0, int x1, int y1, int color) {
@@ -199,19 +166,14 @@ void Gui::fill(int x0, int y0, int x1, int y1, int color) {
     float g = static_cast<float>((color >> 8) & 0xFF) / 255.0f;
     float b = static_cast<float>(color & 0xFF) / 255.0f;
 
-#ifdef MC_RENDERER_METAL
     RenderDevice::get().setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
-#else
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-#endif
 
     ShaderManager::getInstance().useGuiShader();
     ShaderManager::getInstance().updateMatrices();
     ShaderManager::getInstance().setUseTexture(false);
 
     Tesselator& t = Tesselator::getInstance();
-    t.begin(GL_QUADS);
+    t.begin(DrawMode::Quads);
     t.color(r, g, b, a);
     t.vertex(static_cast<float>(x0), static_cast<float>(y1), 0.0f);
     t.vertex(static_cast<float>(x1), static_cast<float>(y1), 0.0f);
@@ -220,11 +182,7 @@ void Gui::fill(int x0, int y0, int x1, int y1, int color) {
     t.end();
 
     ShaderManager::getInstance().setUseTexture(true);
-#ifdef MC_RENDERER_METAL
     RenderDevice::get().setBlend(false);
-#else
-    glDisable(GL_BLEND);
-#endif
 }
 
 void Gui::fillGradient(int x0, int y0, int x1, int y1, int colorTop, int colorBottom) {
@@ -238,19 +196,14 @@ void Gui::fillGradient(int x0, int y0, int x1, int y1, int colorTop, int colorBo
     float g2 = static_cast<float>((colorBottom >> 8) & 0xFF) / 255.0f;
     float b2 = static_cast<float>(colorBottom & 0xFF) / 255.0f;
 
-#ifdef MC_RENDERER_METAL
     RenderDevice::get().setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
-#else
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-#endif
 
     ShaderManager::getInstance().useGuiShader();
     ShaderManager::getInstance().updateMatrices();
     ShaderManager::getInstance().setUseTexture(false);
 
     Tesselator& t = Tesselator::getInstance();
-    t.begin(GL_QUADS);
+    t.begin(DrawMode::Quads);
     t.color(r1, g1, b1, a1);
     t.vertex(static_cast<float>(x1), static_cast<float>(y0), 0.0f);
     t.color(r1, g1, b1, a1);
@@ -262,11 +215,7 @@ void Gui::fillGradient(int x0, int y0, int x1, int y1, int colorTop, int colorBo
     t.end();
 
     ShaderManager::getInstance().setUseTexture(true);
-#ifdef MC_RENDERER_METAL
     RenderDevice::get().setBlend(false);
-#else
-    glDisable(GL_BLEND);
-#endif
 }
 
 void Gui::blit(int x, int y, int u, int v, int width, int height) {
@@ -274,7 +223,7 @@ void Gui::blit(int x, int y, int u, int v, int width, int height) {
     float vs = 0.00390625f;
 
     Tesselator& t = Tesselator::getInstance();
-    t.begin(GL_QUADS);
+    t.begin(DrawMode::Quads);
     t.color(1.0f, 1.0f, 1.0f, 1.0f);
     t.tex(static_cast<float>(u) * us, static_cast<float>(v + height) * vs);
     t.vertex(static_cast<float>(x), static_cast<float>(y + height), blitOffset);
@@ -307,12 +256,7 @@ void Gui::renderHearts() {
     int baseY = scaledHeight - 32;
 
     Textures::getInstance().bind("resources/gui/icons.png");
-#ifdef MC_RENDERER_METAL
     RenderDevice::get().setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
-#else
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-#endif
 
     for (int i = 0; i < 10; i++) {
         int heartX = scaledWidth / 2 - 91 + i * 8;
@@ -331,11 +275,7 @@ void Gui::renderHearts() {
         }
     }
 
-#ifdef MC_RENDERER_METAL
     RenderDevice::get().setBlend(false);
-#else
-    glDisable(GL_BLEND);
-#endif
 }
 
 void Gui::renderArmor() {
@@ -348,11 +288,7 @@ void Gui::renderArmor() {
     int baseY = scaledHeight - 32;
 
     Textures::getInstance().bind("resources/gui/icons.png");
-#ifdef MC_RENDERER_METAL
     RenderDevice::get().setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
-#else
-    glEnable(GL_BLEND);
-#endif
 
     for (int i = 0; i < 10; i++) {
         int armorX = scaledWidth / 2 + 91 - i * 8 - 9;
@@ -366,11 +302,7 @@ void Gui::renderArmor() {
         }
     }
 
-#ifdef MC_RENDERER_METAL
     RenderDevice::get().setBlend(false);
-#else
-    glDisable(GL_BLEND);
-#endif
 }
 
 void Gui::renderDebugInfo() {
@@ -427,13 +359,9 @@ void Gui::renderChat() {
 void Gui::renderGuiItem(const ItemStack& item, int x, int y, float z, Font* font, TileRenderer& tileRenderer) {
     if (item.isEmpty()) return;
 
-#ifdef MC_RENDERER_METAL
-    RenderDevice::get().setDepthTest(true);
-    RenderDevice::get().clear(false, true);
-#else
-    glEnable(GL_DEPTH_TEST);
-    glClear(GL_DEPTH_BUFFER_BIT);
-#endif
+    auto& device = RenderDevice::get();
+    device.setDepthTest(true);
+    device.clear(false, true);
 
     if (item.id > 0 && item.id < 256) {
         Tile* tile = Tile::tiles[item.id].get();
@@ -478,7 +406,7 @@ void Gui::renderGuiItem(const ItemStack& item, int x, int y, float z, Font* font
                 float v1 = static_cast<float>(sy + 16) / 256.0f;
 
                 Tesselator& t = Tesselator::getInstance();
-                t.begin(GL_QUADS);
+                t.begin(DrawMode::Quads);
                 t.color(1.0f, 1.0f, 1.0f, 1.0f);
                 t.tex(u0, v1); t.vertex(static_cast<float>(x), static_cast<float>(y + 16), z);
                 t.tex(u1, v1); t.vertex(static_cast<float>(x + 16), static_cast<float>(y + 16), z);
@@ -506,7 +434,7 @@ void Gui::renderGuiItem(const ItemStack& item, int x, int y, float z, Font* font
             float v1 = static_cast<float>(sy + 16) / 256.0f;
 
             Tesselator& t = Tesselator::getInstance();
-            t.begin(GL_QUADS);
+            t.begin(DrawMode::Quads);
             t.color(1.0f, 1.0f, 1.0f, 1.0f);
             t.tex(u0, v1); t.vertex(static_cast<float>(x), static_cast<float>(y + 16), z);
             t.tex(u1, v1); t.vertex(static_cast<float>(x + 16), static_cast<float>(y + 16), z);
@@ -516,21 +444,13 @@ void Gui::renderGuiItem(const ItemStack& item, int x, int y, float z, Font* font
         }
     }
 
-#ifdef MC_RENDERER_METAL
-    RenderDevice::get().setDepthTest(false);
-#else
-    glDisable(GL_DEPTH_TEST);
-#endif
+    device.setDepthTest(false);
 
     if (item.count > 1 && font) {
         std::string countStr = std::to_string(item.count);
         int textX = x + 17 - font->getWidth(countStr);
         int textY = y + 9;
-#ifdef MC_RENDERER_METAL
-        RenderDevice::get().setDepthTest(false);
-#else
-        glDisable(GL_DEPTH_TEST);
-#endif
+        device.setDepthTest(false);
         font->drawShadow(countStr, textX, textY, 0xFFFFFF);
     }
 }

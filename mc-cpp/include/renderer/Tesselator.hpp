@@ -3,21 +3,7 @@
 #include <cstdint>
 #include <vector>
 #include <memory>
-
-#ifndef MC_RENDERER_METAL
-#include <GL/glew.h>
-#else
-// Forward declarations for Metal build
-typedef unsigned int GLenum;
-typedef unsigned int GLuint;
-#define GL_QUADS 0x0007
-#define GL_TRIANGLES 0x0004
-#define GL_LINES 0x0001
-#define GL_LINE_STRIP 0x0003
-#define GL_LINE_LOOP 0x0002
-#define GL_TRIANGLE_FAN 0x0006
-#define GL_POINTS 0x0000
-#endif
+#include "renderer/backend/RenderTypes.hpp"
 
 namespace mc {
 
@@ -25,7 +11,7 @@ class VertexBuffer;
 class IndexBuffer;
 
 /**
- * Tesselator - Modern OpenGL 3.3 vertex buffer system.
+ * Tesselator - Modern vertex buffer system using the RenderDevice abstraction.
  * Uses VAO/VBO for rendering with automatic GL_QUADS to GL_TRIANGLES conversion.
  *
  * Vertex format (32 bytes per vertex = 8 ints):
@@ -45,7 +31,7 @@ public:
     void destroy();
 
     // Begin/End batch
-    void begin(GLenum mode = GL_QUADS);
+    void begin(DrawMode mode = DrawMode::Quads);
     void end();
 
     // Vertex data
@@ -84,13 +70,6 @@ public:
     };
     VertexData getVertexData();
 
-    // VAO attribute locations
-    static constexpr GLuint ATTRIB_POSITION = 0;
-    static constexpr GLuint ATTRIB_TEXCOORD = 1;
-    static constexpr GLuint ATTRIB_COLOR = 2;
-    static constexpr GLuint ATTRIB_NORMAL = 3;
-    static constexpr GLuint ATTRIB_LIGHT = 4;
-
 private:
     Tesselator();
     ~Tesselator();
@@ -99,18 +78,10 @@ private:
 
     void draw();
     void buildQuadIndices();
-    void setupVAO();
 
-#ifdef MC_RENDERER_METAL
-    // RenderDevice buffers for Metal
+    // RenderDevice buffers (used by both backends)
     std::unique_ptr<VertexBuffer> vertexBuffer;
     std::unique_ptr<IndexBuffer> indexBuffer;
-#else
-    // OpenGL objects
-    GLuint vao;
-    GLuint vbo;
-    GLuint ebo;
-#endif
     bool vaoInitialized;
 
     // Vertex data array (matches Java int[] array)
@@ -137,7 +108,7 @@ private:
     bool noColorFlag;
     bool tesselating;
 
-    GLenum mode;
+    DrawMode mode;
 };
 
 } // namespace mc
