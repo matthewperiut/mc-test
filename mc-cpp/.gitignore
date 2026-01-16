@@ -7,10 +7,7 @@
 
 # CMake build directories
 build/
-cmake-build-debug/
-cmake-build-release/
-cmake-build-relwithdebinfo/
-cmake-build-minsizerel/
+cmake-build-*/
 
 # Compiled objects and binaries
 *.o

@@ -62,6 +62,7 @@ if(USE_METAL)
     FetchContent_Declare(
         metal-cpp
         URL https://developer.apple.com/metal/cpp/files/metal-cpp_macOS15_iOS18.zip
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
     FetchContent_MakeAvailable(metal-cpp)
 
