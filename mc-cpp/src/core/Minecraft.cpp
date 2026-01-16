@@ -410,6 +410,13 @@ void Minecraft::render(float partialTick) {
 
     // Render screen overlay
     if (currentScreen) {
+        // Check if screen needs to be reinitialized due to resize
+        int scaledWidth = gui->getScaledWidth();
+        int scaledHeight = gui->getScaledHeight();
+        if (currentScreen->width != scaledWidth || currentScreen->height != scaledHeight) {
+            currentScreen->init(this, scaledWidth, scaledHeight);
+        }
+
         // Scale mouse coordinates by GUI scale
         int scale = gui->getGuiScale();
         int scaledMouseX = static_cast<int>(mouseHandler.getX()) / scale;

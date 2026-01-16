@@ -11,7 +11,7 @@ extern "C" {
 void* getMetalLayerFromWindow(void* glfwNSWindow);
 
 // Update Metal layer drawable size when window resizes
-void updateMetalLayerSize(void* metalLayer, int width, int height, float scaleFactor);
+void updateMetalLayerSize(void* metalLayer, void* nsWindow, int width, int height);
 
 // Get the backing scale factor for retina displays
 float getWindowScaleFactor(void* glfwNSWindow);

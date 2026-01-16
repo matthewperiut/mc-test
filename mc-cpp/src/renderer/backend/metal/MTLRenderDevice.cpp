@@ -176,7 +176,7 @@ void MTLRenderDevice::handleResize(int width, int height) {
     if (metalLayer && windowHandle) {
         void* nsWindow = glfwGetCocoaWindow(static_cast<GLFWwindow*>(windowHandle));
         scaleFactor = getWindowScaleFactor(nsWindow);
-        updateMetalLayerSize(metalLayer, width, height, scaleFactor);
+        updateMetalLayerSize(metalLayer, nsWindow, width, height);
     }
 
     // Recreate depth texture

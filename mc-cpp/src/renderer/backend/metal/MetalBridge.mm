@@ -25,20 +25,37 @@ void* getMetalLayerFromWindow(void* glfwWindow) {
         [contentView setWantsLayer:YES];
         [contentView setLayer:metalLayer];
 
-        // Match layer size to view
+        // Set contents scale for HiDPI/Retina displays
+        CGFloat scaleFactor = [nsWindow backingScaleFactor];
+        metalLayer.contentsScale = scaleFactor;
+
+        // Match layer frame to view bounds (in points)
+        metalLayer.frame = contentView.bounds;
+
+        // Set drawable size in pixels
         CGSize viewSize = [contentView bounds].size;
-        metalLayer.drawableSize = CGSizeMake(viewSize.width * contentView.window.backingScaleFactor,
-                                              viewSize.height * contentView.window.backingScaleFactor);
+        metalLayer.drawableSize = CGSizeMake(viewSize.width * scaleFactor,
+                                              viewSize.height * scaleFactor);
 
         return (__bridge void*)metalLayer;
     }
 }
 
 // Update Metal layer drawable size when window resizes
-void updateMetalLayerSize(void* layerPtr, int width, int height, float scaleFactor) {
+void updateMetalLayerSize(void* layerPtr, void* windowPtr, int width, int height) {
     @autoreleasepool {
         CAMetalLayer* metalLayer = (__bridge CAMetalLayer*)layerPtr;
-        metalLayer.drawableSize = CGSizeMake(width * scaleFactor, height * scaleFactor);
+        NSWindow* nsWindow = (__bridge NSWindow*)windowPtr;
+
+        // Update the layer's frame to match the content view bounds (in points)
+        NSView* contentView = [nsWindow contentView];
+        metalLayer.frame = contentView.bounds;
+
+        // Set contentsScale to match the window's backing scale factor
+        metalLayer.contentsScale = [nsWindow backingScaleFactor];
+
+        // width and height are already in pixels from GLFW framebuffer callback
+        metalLayer.drawableSize = CGSizeMake(width, height);
     }
 }
 
