@@ -253,6 +253,7 @@ void MTLRenderDevice::beginFrame() {
 void MTLRenderDevice::endFrame() {
     if (renderEncoder) {
         renderEncoder->endEncoding();
+        renderEncoder->release();
         renderEncoder = nullptr;
     }
 
@@ -267,6 +268,9 @@ void MTLRenderDevice::present() {
         CA::MetalDrawable* drawable = reinterpret_cast<CA::MetalDrawable*>(currentDrawable);
         commandBuffer->presentDrawable(drawable);
         commandBuffer->commit();
+        // Wait for GPU to finish before releasing to ensure proper cleanup
+        commandBuffer->waitUntilCompleted();
+        commandBuffer->release();
         commandBuffer = nullptr;
     }
     currentDrawable = nullptr;
@@ -308,6 +312,7 @@ void MTLRenderDevice::clearDepthMidFrame() {
 
     // End current render encoder
     renderEncoder->endEncoding();
+    renderEncoder->release();
     renderEncoder = nullptr;
 
     // Release old render pass descriptor

@@ -37,40 +37,44 @@ void MTLTexture::destroy() {
 }
 
 void MTLTexture::upload(int w, int h, const uint8_t* rgba, bool generateMipmaps) {
-    // Release existing texture if dimensions changed
-    if (texture && (width != w || height != h)) {
-        texture->release();
-        texture = nullptr;
-    }
+    // Only create new texture if dimensions changed or texture doesn't exist
+    bool needsNewTexture = !texture || (width != w) || (height != h);
 
-    width = w;
-    height = h;
-
-    // Create texture descriptor
-    MTL::TextureDescriptor* desc = MTL::TextureDescriptor::alloc()->init();
-    desc->setPixelFormat(MTL::PixelFormatRGBA8Unorm);
-    desc->setWidth(width);
-    desc->setHeight(height);
-    desc->setTextureType(MTL::TextureType2D);
-    desc->setStorageMode(MTL::StorageModeShared);
-
-    if (generateMipmaps) {
-        // Need ShaderWrite usage for mipmap generation
-        desc->setUsage(MTL::TextureUsageShaderRead | MTL::TextureUsageShaderWrite);
-        // Calculate mipmap levels
-        int mipLevels = 1;
-        int size = std::max(width, height);
-        while (size > 1) {
-            size /= 2;
-            mipLevels++;
+    if (needsNewTexture) {
+        if (texture) {
+            texture->release();
+            texture = nullptr;
         }
-        desc->setMipmapLevelCount(mipLevels);
-    } else {
-        desc->setUsage(MTL::TextureUsageShaderRead);
-    }
 
-    texture = device->newTexture(desc);
-    desc->release();
+        width = w;
+        height = h;
+
+        // Create texture descriptor
+        MTL::TextureDescriptor* desc = MTL::TextureDescriptor::alloc()->init();
+        desc->setPixelFormat(MTL::PixelFormatRGBA8Unorm);
+        desc->setWidth(width);
+        desc->setHeight(height);
+        desc->setTextureType(MTL::TextureType2D);
+        desc->setStorageMode(MTL::StorageModeShared);
+
+        if (generateMipmaps) {
+            // Need ShaderWrite usage for mipmap generation
+            desc->setUsage(MTL::TextureUsageShaderRead | MTL::TextureUsageShaderWrite);
+            // Calculate mipmap levels
+            int mipLevels = 1;
+            int size = std::max(width, height);
+            while (size > 1) {
+                size /= 2;
+                mipLevels++;
+            }
+            desc->setMipmapLevelCount(mipLevels);
+        } else {
+            desc->setUsage(MTL::TextureUsageShaderRead);
+        }
+
+        texture = device->newTexture(desc);
+        desc->release();
+    }
 
     if (!texture) {
         return;
@@ -91,6 +95,8 @@ void MTLTexture::upload(int w, int h, const uint8_t* rgba, bool generateMipmaps)
             blitEncoder->endEncoding();
             cmdBuffer->commit();
             cmdBuffer->waitUntilCompleted();
+            blitEncoder->release();
+            cmdBuffer->release();
         }
     }
 }

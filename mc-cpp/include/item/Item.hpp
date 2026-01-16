@@ -9,7 +9,7 @@ namespace mc {
 // Forward declarations
 class Level;
 class Player;
-class ItemStack;
+struct ItemStack;
 
 // Item class matching Java Item
 class Item {

@@ -19,6 +19,9 @@ float getWindowScaleFactor(void* glfwNSWindow);
 // Set vsync (display sync) on Metal layer
 void setMetalLayerVsync(void* metalLayer, bool enabled);
 
+// Drain the autorelease pool - call once per frame to prevent memory buildup
+void metalDrainAutoreleasePool(void);
+
 #ifdef __cplusplus
 }
 #endif

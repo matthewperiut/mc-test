@@ -21,6 +21,7 @@
 #include "renderer/backend/RenderDevice.hpp"
 #ifdef MC_RENDERER_METAL
 #include "renderer/backend/metal/MTLRenderDevice.hpp"
+#include "renderer/backend/metal/MetalBridge.h"
 #endif
 
 #ifndef MC_RENDERER_METAL
@@ -318,7 +319,10 @@ void Minecraft::run() {
         device.endFrame();
         device.present();
 
-#ifndef MC_RENDERER_METAL
+#ifdef MC_RENDERER_METAL
+        // Drain autorelease pool to prevent Objective-C memory buildup
+        metalDrainAutoreleasePool();
+#else
         // Swap buffers (OpenGL only - Metal presents in device.present())
         glfwSwapBuffers(window);
 #endif

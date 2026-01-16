@@ -8,8 +8,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # =============================================================================
 # Platform detection and backend selection
 # =============================================================================
-option(FORCE_OPENGL "Force OpenGL backend on macOS (instead of Metal)" ON)
-option(ENABLE_SANITIZERS "Enable AddressSanitizer for memory leak detection" ON)
+option(FORCE_OPENGL "Force OpenGL backend on macOS (instead of Metal)" OFF)
+option(ENABLE_SANITIZERS "Enable AddressSanitizer for memory leak detection" OFF)
 
 if(APPLE AND NOT FORCE_OPENGL)
     set(USE_METAL ON)
