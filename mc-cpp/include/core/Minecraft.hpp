@@ -44,7 +44,7 @@ public:
     std::unique_ptr<GameRenderer> gameRenderer;
     std::unique_ptr<Gui> gui;
     std::unique_ptr<GameMode> gameMode;
-    Screen* currentScreen;
+    std::unique_ptr<Screen> currentScreen;
 
     // Input
     MouseHandler mouseHandler;
@@ -95,7 +95,7 @@ public:
     void saveLevel(const std::string& path);
 
     // Screen management
-    void setScreen(Screen* screen);
+    void setScreen(std::unique_ptr<Screen> screen);
     void closeScreen();
 
     // Pause

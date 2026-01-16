@@ -262,7 +262,7 @@ void OptionsScreen::keyPressed(int key, int scancode, int action, int mods) {
         if (key == GLFW_KEY_ESCAPE) {
             minecraft->options.save("options.txt");
             if (parentScreen) {
-                minecraft->setScreen(new PauseScreen());
+                minecraft->setScreen(std::make_unique<PauseScreen>());
             } else {
                 minecraft->closeScreen();
             }
@@ -337,7 +337,7 @@ void OptionsScreen::buttonClicked(int buttonId) {
         case BUTTON_DONE:
             minecraft->options.save("options.txt");
             if (parentScreen) {
-                minecraft->setScreen(new PauseScreen());
+                minecraft->setScreen(std::make_unique<PauseScreen>());
             } else {
                 minecraft->closeScreen();
             }

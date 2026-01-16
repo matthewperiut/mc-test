@@ -130,7 +130,7 @@ void PauseScreen::buttonClicked(int buttonId) {
             break;
 
         case BUTTON_OPTIONS:
-            minecraft->setScreen(new OptionsScreen(this));
+            minecraft->setScreen(std::make_unique<OptionsScreen>(this));
             break;
 
         case BUTTON_QUIT:

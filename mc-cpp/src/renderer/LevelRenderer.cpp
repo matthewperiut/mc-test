@@ -515,8 +515,8 @@ void LevelRenderer::renderSky(float partialTick) {
     // Render sunrise/sunset glow
     device.setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
 
-    float* sunriseColor = getSunriseColor(timeOfDay);
-    if (sunriseColor != nullptr) {
+    auto sunriseColor = getSunriseColor(timeOfDay);
+    if (sunriseColor[3] > 0.0f) {  // Check if alpha is non-zero (sunrise/sunset active)
         MatrixStack::modelview().push();
         MatrixStack::modelview().rotate(90.0f, 1.0f, 0.0f, 0.0f);
         MatrixStack::modelview().rotate(timeOfDay > 0.5f ? 180.0f : 0.0f, 0.0f, 0.0f, 1.0f);
@@ -541,7 +541,6 @@ void LevelRenderer::renderSky(float partialTick) {
         t.end();
 
         MatrixStack::modelview().pop();
-        delete[] sunriseColor;
     }
 
     device.setBlend(true, BlendFactor::SrcAlpha, BlendFactor::One);  // Additive blending
@@ -649,7 +648,7 @@ void LevelRenderer::getSkyColor(float timeOfDay, float& r, float& g, float& b) c
     b = std::max(b, 0.06f);
 }
 
-float* LevelRenderer::getSunriseColor(float timeOfDay) const {
+std::array<float, 4> LevelRenderer::getSunriseColor(float timeOfDay) const {
     float threshold = 0.4f;
     float cosVal = std::cos(timeOfDay * 3.14159265f * 2.0f);
 
@@ -658,14 +657,14 @@ float* LevelRenderer::getSunriseColor(float timeOfDay) const {
         float var7 = 1.0f - (1.0f - std::sin(var6 * 3.14159265f)) * 0.99f;
         var7 *= var7;
 
-        float* color = new float[4];
-        color[0] = var6 * 0.3f + 0.7f;
-        color[1] = var6 * var6 * 0.7f + 0.2f;
-        color[2] = var6 * var6 * 0.0f + 0.2f;
-        color[3] = var7;
-        return color;
+        return {
+            var6 * 0.3f + 0.7f,
+            var6 * var6 * 0.7f + 0.2f,
+            var6 * var6 * 0.0f + 0.2f,
+            var7
+        };
     }
-    return nullptr;
+    return {0.0f, 0.0f, 0.0f, 0.0f};
 }
 
 float LevelRenderer::getStarBrightness(float timeOfDay) const {

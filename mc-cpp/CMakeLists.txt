@@ -9,6 +9,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Platform detection and backend selection
 # =============================================================================
 option(FORCE_OPENGL "Force OpenGL backend on macOS (instead of Metal)" ON)
+option(ENABLE_SANITIZERS "Enable AddressSanitizer for memory leak detection" ON)
 
 if(APPLE AND NOT FORCE_OPENGL)
     set(USE_METAL ON)
@@ -315,4 +316,17 @@ endif()
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     target_compile_definitions(${PROJECT_NAME} PRIVATE DEBUG_BUILD)
+endif()
+
+# =============================================================================
+# Sanitizers (AddressSanitizer for memory leak detection)
+# =============================================================================
+if(ENABLE_SANITIZERS)
+    if(NOT MSVC)
+        target_compile_options(${PROJECT_NAME} PRIVATE -fsanitize=address -fsanitize=leak)
+        target_link_options(${PROJECT_NAME} PRIVATE -fsanitize=address -fsanitize=leak)
+        message(STATUS "AddressSanitizer and LeakSanitizer enabled")
+    else()
+        message(WARNING "Sanitizers not supported with MSVC compiler")
+    endif()
 endif()

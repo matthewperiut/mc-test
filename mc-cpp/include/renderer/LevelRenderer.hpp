@@ -7,6 +7,7 @@
 #include "particle/ParticleEngine.hpp"
 #include <vector>
 #include <memory>
+#include <array>
 #include <GL/glew.h>
 
 namespace mc {
@@ -97,7 +98,7 @@ private:
     void buildSkyVAO();
     void buildDarkVAO();
     float getTimeOfDay() const;
-    float* getSunriseColor(float timeOfDay) const;
+    std::array<float, 4> getSunriseColor(float timeOfDay) const;
     float getStarBrightness(float timeOfDay) const;
 
     // Entity rendering helpers

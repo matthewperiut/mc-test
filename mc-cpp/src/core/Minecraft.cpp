@@ -582,7 +582,7 @@ void Minecraft::onKeyPress(int key, int scancode, int action, int mods) {
             case GLFW_KEY_ESCAPE:
                 // Open pause menu (matching Java)
                 if (mouseHandler.isGrabbed()) {
-                    setScreen(new PauseScreen());
+                    setScreen(std::make_unique<PauseScreen>());
                     paused = true;
                 }
                 break;
@@ -599,7 +599,7 @@ void Minecraft::onKeyPress(int key, int scancode, int action, int mods) {
                 // Open inventory (matching Java)
                 if (mouseHandler.isGrabbed()) {
                     releaseMouse();
-                    setScreen(new InventoryScreen());
+                    setScreen(std::make_unique<InventoryScreen>());
                 }
                 break;
 
@@ -694,19 +694,18 @@ void Minecraft::onResize(int width, int height) {
     }
 }
 
-void Minecraft::setScreen(Screen* screen) {
+void Minecraft::setScreen(std::unique_ptr<Screen> screen) {
     if (currentScreen) {
         currentScreen->removed();
-        delete currentScreen;
     }
 
-    currentScreen = screen;
+    currentScreen = std::move(screen);
 
-    if (screen) {
+    if (currentScreen) {
         // Use scaled dimensions for screen
         int scaledWidth = gui ? gui->getScaledWidth() : screenWidth;
         int scaledHeight = gui ? gui->getScaledHeight() : screenHeight;
-        screen->init(this, scaledWidth, scaledHeight);
+        currentScreen->init(this, scaledWidth, scaledHeight);
         releaseMouse();
 
         // Stop any ongoing block breaking
