@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <functional>
+#include <memory>
 
 namespace mc {
 
@@ -31,7 +32,7 @@ enum class TileShape {
 class Tile {
 public:
     // Static tile registry (like Java Tile.tiles[])
-    static Tile* tiles[256];
+    static std::unique_ptr<Tile> tiles[256];
     static bool shouldTick[256];
 
     // Tile IDs (constants matching original)

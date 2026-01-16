@@ -184,7 +184,7 @@ void Chunk::rebuildSolid(TileRenderer& renderer) {
                 int tileId = level->getTile(x, y, z);
                 if (tileId <= 0) continue;
 
-                Tile* tile = Tile::tiles[tileId];
+                Tile* tile = Tile::tiles[tileId].get();
                 if (!tile) continue;
 
                 // Skip water/lava for solid pass
@@ -222,7 +222,7 @@ void Chunk::rebuildWater(TileRenderer& renderer) {
                 int tileId = level->getTile(x, y, z);
                 if (tileId <= 0) continue;
 
-                Tile* tile = Tile::tiles[tileId];
+                Tile* tile = Tile::tiles[tileId].get();
                 if (!tile) continue;
 
                 // Only render water/lava in this pass

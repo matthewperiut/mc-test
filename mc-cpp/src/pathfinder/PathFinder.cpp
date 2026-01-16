@@ -179,7 +179,7 @@ int PathFinder::isFree(Entity* /*entity*/, int x, int y, int z, Node* size) {
             for (int bz = z; bz < z + size->z; ++bz) {
                 int tileId = level->getTile(bx, by, bz);
                 if (tileId > 0) {
-                    Tile* tile = Tile::tiles[tileId];
+                    Tile* tile = Tile::tiles[tileId].get();
                     if (tile) {
                         // Check if the tile blocks motion (solid blocks)
                         if (tile->solid) {

@@ -342,7 +342,7 @@ double Entity::distanceToSqr(double tx, double ty, double tz) const {
 void Entity::playStepSound(int tileId) {
     if (tileId <= 0 || tileId >= 256) return;
 
-    Tile* tile = Tile::tiles[tileId];
+    Tile* tile = Tile::tiles[tileId].get();
     if (!tile || tile->stepSound.empty()) {
         // Default to stone sound if no step sound defined
         SoundEngine::getInstance().playSound3D(

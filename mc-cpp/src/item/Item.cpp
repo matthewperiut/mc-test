@@ -3,7 +3,7 @@
 namespace mc {
 
 // Static members
-std::array<Item*, Item::MAX_ITEMS> Item::items = {};
+std::array<std::unique_ptr<Item>, Item::MAX_ITEMS> Item::items;
 Item* Item::stick = nullptr;
 Item* Item::coal = nullptr;
 Item* Item::ironIngot = nullptr;
@@ -23,7 +23,7 @@ Item::Item(int itemId)
     if (items[ID_OFFSET + itemId] != nullptr) {
         // Item ID conflict
     }
-    items[ID_OFFSET + itemId] = this;
+    items[ID_OFFSET + itemId].reset(this);
 }
 
 Item* Item::setIcon(int iconIndex) {
@@ -62,7 +62,7 @@ bool Item::useOn(Player* /*player*/, Level* /*level*/, int /*x*/, int /*y*/, int
 
 Item* Item::byId(int id) {
     if (id < 0 || id >= MAX_ITEMS) return nullptr;
-    return items[id];
+    return items[id].get();
 }
 
 void Item::initItems() {
@@ -98,8 +98,7 @@ void Item::initItems() {
 
 void Item::destroyItems() {
     for (int i = 0; i < MAX_ITEMS; i++) {
-        delete items[i];
-        items[i] = nullptr;
+        items[i].reset();
     }
     stick = nullptr;
     coal = nullptr;

@@ -3,7 +3,7 @@
 
 namespace mc {
 
-Tile* Tile::tiles[256] = {nullptr};
+std::unique_ptr<Tile> Tile::tiles[256];
 bool Tile::shouldTick[256] = {false};
 
 Tile::Tile(int id, int textureIndex)
@@ -23,7 +23,7 @@ Tile::Tile(int id, int textureIndex)
     if (tiles[id] != nullptr) {
         // Warning: tile already exists at this ID
     }
-    tiles[id] = this;
+    tiles[id].reset(this);
 }
 
 Tile& Tile::setHardness(float h) {
@@ -125,8 +125,7 @@ float Tile::getDestroyProgress(Player* /*player*/) const {
 
 void Tile::destroyTiles() {
     for (int i = 0; i < 256; i++) {
-        delete tiles[i];
-        tiles[i] = nullptr;
+        tiles[i].reset();
     }
 }
 

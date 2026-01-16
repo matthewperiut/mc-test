@@ -521,7 +521,7 @@ void Minecraft::handleInput() {
                     // Check if block can be placed (Java: level.mayPlace())
                     // This checks for entity collisions (can't place inside player)
                     // Also check tile-specific mayPlace (e.g., torches need adjacent solid block)
-                    Tile* tileToPlace = Tile::tiles[held.id];
+                    Tile* tileToPlace = Tile::tiles[held.id].get();
                     bool canPlace = level->mayPlace(held.id, x, y, z, false);
                     if (canPlace && tileToPlace) {
                         canPlace = tileToPlace->mayPlace(level.get(), x, y, z);
@@ -544,7 +544,7 @@ void Minecraft::handleInput() {
 
                         // Play place sound (matching Java TileItem line 57)
                         // Java: level.playSound(x+0.5, y+0.5, z+0.5, soundType.getStepSound(), (volume+1.0)/2.0, pitch*0.8)
-                        Tile* placedTile = Tile::tiles[held.id];
+                        Tile* placedTile = Tile::tiles[held.id].get();
                         if (placedTile) {
                             std::string soundName = placedTile->stepSound.empty() ? "step.stone" : "step." + placedTile->stepSound;
                             SoundEngine::getInstance().playSound3D(

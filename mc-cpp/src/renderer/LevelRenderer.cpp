@@ -960,7 +960,7 @@ void LevelRenderer::renderEntities(float partialTick) {
         MatrixStack::modelview().translate(static_cast<float>(ix), static_cast<float>(iy + bob), static_cast<float>(iz));
 
         if (item->itemId > 0 && item->itemId < 256) {
-            Tile* tile = Tile::tiles[item->itemId];
+            Tile* tile = Tile::tiles[item->itemId].get();
             if (tile && TileRenderer::canRender(static_cast<int>(tile->renderShape))) {
                 Textures::getInstance().bind("resources/terrain.png");
 

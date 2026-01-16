@@ -436,7 +436,7 @@ void Gui::renderGuiItem(const ItemStack& item, int x, int y, float z, Font* font
 #endif
 
     if (item.id > 0 && item.id < 256) {
-        Tile* tile = Tile::tiles[item.id];
+        Tile* tile = Tile::tiles[item.id].get();
         if (tile) {
             // Check if this tile can be rendered as a 3D block in GUI (matching Java ItemRenderer.renderGuiItem)
             int renderShape = static_cast<int>(tile->renderShape);

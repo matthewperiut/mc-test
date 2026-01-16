@@ -251,7 +251,7 @@ void InventoryScreen::renderTooltip() {
 
     std::string itemName;
     if (item.id > 0 && item.id < 256) {
-        Tile* tile = Tile::tiles[item.id];
+        Tile* tile = Tile::tiles[item.id].get();
         if (tile && !tile->name.empty()) {
             itemName = tile->name;
         }

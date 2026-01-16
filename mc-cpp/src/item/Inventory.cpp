@@ -15,7 +15,7 @@ Item* ItemStack::getItem() const {
 
 Tile* ItemStack::getTile() const {
     if (id > 0 && id < 256) {
-        return Tile::tiles[id];
+        return Tile::tiles[id].get();
     }
     return nullptr;
 }
@@ -25,7 +25,7 @@ int ItemStack::getIcon() const {
 
     if (id < 256) {
         // Block - get texture from Tile
-        Tile* tile = Tile::tiles[id];
+        Tile* tile = Tile::tiles[id].get();
         if (tile) {
             return tile->getTexture(0);  // Front face texture
         }

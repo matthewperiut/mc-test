@@ -2,6 +2,7 @@
 
 #include <array>
 #include <string>
+#include <memory>
 
 namespace mc {
 
@@ -14,7 +15,7 @@ class ItemStack;
 class Item {
 public:
     static constexpr int MAX_ITEMS = 32000;
-    static std::array<Item*, MAX_ITEMS> items;
+    static std::array<std::unique_ptr<Item>, MAX_ITEMS> items;
 
     // Item IDs (items start at 256, blocks are 0-255)
     static constexpr int ID_OFFSET = 256;

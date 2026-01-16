@@ -57,7 +57,7 @@ bool GameMode::destroyBlock(int x, int y, int z, int /*face*/) {
     int tileId = level->getTile(x, y, z);
     if (tileId <= 0) return false;
 
-    Tile* tile = Tile::tiles[tileId];
+    Tile* tile = Tile::tiles[tileId].get();
 
     // Set to air
     bool changed = level->setTile(x, y, z, 0);
@@ -135,7 +135,7 @@ void SurvivalMode::startDestroyBlock(int x, int y, int z, int face) {
     int tileId = minecraft->level->getTile(x, y, z);
     if (tileId <= 0) return;
 
-    Tile* tile = Tile::tiles[tileId];
+    Tile* tile = Tile::tiles[tileId].get();
     if (!tile) return;
 
     // Attack tile (e.g., note block plays sound)
@@ -175,7 +175,7 @@ void SurvivalMode::continueDestroyBlock(int x, int y, int z, int face) {
         int tileId = minecraft->level->getTile(x, y, z);
         if (tileId <= 0) return;
 
-        Tile* tile = Tile::tiles[tileId];
+        Tile* tile = Tile::tiles[tileId].get();
         if (!tile) return;
 
         // Progress break (Java: this.destroyProgress += tile.getDestroyProgress(this.minecraft.player))
@@ -228,7 +228,7 @@ bool SurvivalMode::destroyBlock(int x, int y, int z, int face) {
     int tileId = level->getTile(x, y, z);
     if (tileId <= 0) return false;
 
-    Tile* tile = Tile::tiles[tileId];
+    Tile* tile = Tile::tiles[tileId].get();
     int data = level->getData(x, y, z);
 
     // Get drop info before destroying

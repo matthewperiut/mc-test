@@ -37,6 +37,7 @@ Level::Level(int width, int height, int depth, long long seed)
 
 Level::~Level() {
     entities.clear();
+    listeners.clear();  // Clear listener references to prevent use-after-free
 }
 
 int Level::getIndex(int x, int y, int z) const {
@@ -122,7 +123,7 @@ bool Level::isLiquid(int x, int y, int z) const {
 
 Tile* Level::getTileAt(int x, int y, int z) const {
     int id = getTile(x, y, z);
-    return (id >= 0 && id < 256) ? Tile::tiles[id] : nullptr;
+    return (id >= 0 && id < 256) ? Tile::tiles[id].get() : nullptr;
 }
 
 std::vector<AABB> Level::getCollisionBoxes(Entity* /*entity*/, const AABB& area) const {
@@ -438,8 +439,8 @@ bool Level::mayPlace(int tileId, int x, int y, int z, bool ignoreBoundingBox) co
     if (!isInBounds(x, y, z)) return false;
 
     int existingTile = getTile(x, y, z);
-    Tile* existing = (existingTile >= 0 && existingTile < 256) ? Tile::tiles[existingTile] : nullptr;
-    Tile* newTile = (tileId >= 0 && tileId < 256) ? Tile::tiles[tileId] : nullptr;
+    Tile* existing = (existingTile >= 0 && existingTile < 256) ? Tile::tiles[existingTile].get() : nullptr;
+    Tile* newTile = (tileId >= 0 && tileId < 256) ? Tile::tiles[tileId].get() : nullptr;
 
     if (!newTile) return false;
 
@@ -492,7 +493,7 @@ void Level::tickTiles() {
 
         int tileId = getTile(x, y, z);
         if (tileId > 0 && Tile::shouldTick[tileId]) {
-            Tile* tile = Tile::tiles[tileId];
+            Tile* tile = Tile::tiles[tileId].get();
             if (tile) {
                 tile->tick(this, x, y, z);
             }
