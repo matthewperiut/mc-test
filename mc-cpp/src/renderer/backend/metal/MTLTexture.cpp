@@ -95,8 +95,8 @@ void MTLTexture::upload(int w, int h, const uint8_t* rgba, bool generateMipmaps)
             blitEncoder->endEncoding();
             cmdBuffer->commit();
             cmdBuffer->waitUntilCompleted();
-            blitEncoder->release();
-            cmdBuffer->release();
+            // Note: blitEncoder and cmdBuffer are autoreleased,
+            // so we don't call release() - the autorelease pool handles them
         }
     }
 }

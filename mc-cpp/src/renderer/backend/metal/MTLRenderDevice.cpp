@@ -253,12 +253,13 @@ void MTLRenderDevice::beginFrame() {
 void MTLRenderDevice::endFrame() {
     if (renderEncoder) {
         renderEncoder->endEncoding();
-        renderEncoder->release();
+        // Note: renderEncoder is autoreleased (returned from renderCommandEncoder()),
+        // so we don't call release() - the autorelease pool handles it
         renderEncoder = nullptr;
     }
 
     if (renderPassDesc) {
-        renderPassDesc->release();
+        renderPassDesc->release();  // This one we allocated with alloc()->init(), so we own it
         renderPassDesc = nullptr;
     }
 }
@@ -268,9 +269,10 @@ void MTLRenderDevice::present() {
         CA::MetalDrawable* drawable = reinterpret_cast<CA::MetalDrawable*>(currentDrawable);
         commandBuffer->presentDrawable(drawable);
         commandBuffer->commit();
-        // Wait for GPU to finish before releasing to ensure proper cleanup
+        // Wait for GPU to finish to ensure proper cleanup
         commandBuffer->waitUntilCompleted();
-        commandBuffer->release();
+        // Note: commandBuffer is autoreleased (returned from commandQueue->commandBuffer()),
+        // so we don't call release() - the autorelease pool handles it
         commandBuffer = nullptr;
     }
     currentDrawable = nullptr;
@@ -312,7 +314,7 @@ void MTLRenderDevice::clearDepthMidFrame() {
 
     // End current render encoder
     renderEncoder->endEncoding();
-    renderEncoder->release();
+    // Note: renderEncoder is autoreleased, so we don't call release()
     renderEncoder = nullptr;
 
     // Release old render pass descriptor

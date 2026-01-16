@@ -292,6 +292,11 @@ void Minecraft::run() {
     auto& device = RenderDevice::get();
 
     while (running && !glfwWindowShouldClose(window)) {
+#ifdef MC_RENDERER_METAL
+        // Create autorelease pool at start of frame to capture all autoreleased Metal objects
+        void* autoreleasePool = metalCreateAutoreleasePool();
+#endif
+
         auto currentTime = std::chrono::high_resolution_clock::now();
         lastTime = currentTime;
 
@@ -320,8 +325,8 @@ void Minecraft::run() {
         device.present();
 
 #ifdef MC_RENDERER_METAL
-        // Drain autorelease pool to prevent Objective-C memory buildup
-        metalDrainAutoreleasePool();
+        // Release autorelease pool at end of frame - this cleans up all autoreleased objects
+        metalReleaseAutoreleasePool(autoreleasePool);
 #else
         // Swap buffers (OpenGL only - Metal presents in device.present())
         glfwSwapBuffers(window);

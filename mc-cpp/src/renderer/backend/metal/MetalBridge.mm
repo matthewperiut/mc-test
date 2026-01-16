@@ -75,11 +75,14 @@ void setMetalLayerVsync(void* layerPtr, bool enabled) {
     }
 }
 
-// Drain the autorelease pool - call once per frame to prevent memory buildup
-void metalDrainAutoreleasePool(void) {
-    @autoreleasepool {
-        // Empty pool - just creating and draining cleans up autoreleased objects
-    }
+// Create an autorelease pool - call at start of frame
+void* metalCreateAutoreleasePool(void) {
+    return [[NSAutoreleasePool alloc] init];
+}
+
+// Release an autorelease pool - call at end of frame to clean up autoreleased objects
+void metalReleaseAutoreleasePool(void* pool) {
+    [(NSAutoreleasePool*)pool release];
 }
 
 }
