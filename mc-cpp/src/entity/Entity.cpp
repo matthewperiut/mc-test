@@ -71,11 +71,10 @@ void Entity::setPos(double x, double y, double z) {
     this->y = y;
     this->z = z;
 
+    // Match Java: bb goes from (y - heightOffset) to (y - heightOffset + bbHeight)
     float hw = bbWidth / 2.0f;
-    float hh = bbHeight / 2.0f;
-
-    bb = AABB(x - hw, y - hh + heightOffset, z - hw,
-              x + hw, y + hh + heightOffset, z + hw);
+    bb = AABB(x - hw, y - heightOffset + ySlideOffset, z - hw,
+              x + hw, y - heightOffset + ySlideOffset + bbHeight, z + hw);
 }
 
 void Entity::setSize(float width, float height) {
@@ -86,7 +85,8 @@ void Entity::setSize(float width, float height) {
 
 void Entity::updateBoundingBox() {
     float hw = bbWidth / 2.0f;
-    bb = AABB(x - hw, y, z - hw, x + hw, y + bbHeight, z + hw);
+    bb = AABB(x - hw, y - heightOffset + ySlideOffset, z - hw,
+              x + hw, y - heightOffset + ySlideOffset + bbHeight, z + hw);
 }
 
 void Entity::move(double dx, double dy, double dz) {

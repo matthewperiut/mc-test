@@ -9,7 +9,7 @@ Chicken::Chicken(Level* level)
     : Animal(level)
 {
     textureName = "/mob/chicken.png";
-    setSize(0.3f, 0.4f);
+    setSize(0.4f, 0.7f);
     health = 4;
     eggTime = static_cast<int>(random() % 6000) + 6000;
 

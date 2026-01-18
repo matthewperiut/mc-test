@@ -82,6 +82,7 @@ Minecraft::Minecraft()
     , breakingX(-1), breakingY(-1), breakingZ(-1)
     , breakingFace(0)
     , showDebug(false)
+    , showHitboxes(false)
 {
     minecraft = this;
 }
@@ -581,7 +582,17 @@ void Minecraft::onKeyPress(int key, int scancode, int action, int mods) {
                 break;
 
             case GLFW_KEY_F3:
-                showDebug = !showDebug;
+                // Only toggle debug if B is not pressed (F3+B is hitbox toggle)
+                if (glfwGetKey(window, GLFW_KEY_B) != GLFW_PRESS) {
+                    showDebug = !showDebug;
+                }
+                break;
+
+            case GLFW_KEY_B:
+                // F3+B toggles entity hitboxes
+                if (glfwGetKey(window, GLFW_KEY_F3) == GLFW_PRESS) {
+                    showHitboxes = !showHitboxes;
+                }
                 break;
 
             case GLFW_KEY_F11:

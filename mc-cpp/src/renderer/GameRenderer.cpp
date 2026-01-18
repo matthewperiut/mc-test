@@ -294,6 +294,9 @@ void GameRenderer::renderWorld(float partialTick) {
     // Render dropped items and entities
     levelRenderer->renderEntities(partialTick);
 
+    // Render entity hitboxes (F3+B)
+    renderEntityHitboxes(partialTick);
+
     // Render particles
     levelRenderer->renderParticles(partialTick);
 
@@ -651,6 +654,87 @@ void GameRenderer::renderHitOutline() {
     device.setCullFace(true, CullMode::Back);
     device.setDepthWrite(true);
     device.setBlend(false);
+
+    // Switch back to world shader
+    ShaderManager::getInstance().useWorldShader();
+    ShaderManager::getInstance().updateMatrices();
+}
+
+void GameRenderer::renderEntityHitboxes(float partialTick) {
+    if (!minecraft->showHitboxes) return;
+    if (!minecraft->level) return;
+
+    LocalPlayer* player = minecraft->player;
+    if (!player) return;
+
+    // Use line shader for hitbox outlines
+    ShaderManager::getInstance().useLineShader();
+    ShaderManager::getInstance().updateMatrices();
+
+    auto& device = RenderDevice::get();
+    device.setBlend(false);  // No transparency - solid white lines
+    device.setDepthWrite(false);
+    device.setCullFace(false);
+
+    // Camera position
+    float camX = static_cast<float>(player->getInterpolatedX(partialTick));
+    float camY = static_cast<float>(player->getInterpolatedY(partialTick) + player->eyeHeight);
+    float camZ = static_cast<float>(player->getInterpolatedZ(partialTick));
+
+    // Screen-space line parameters
+    float pixelWidth = 2.0f;
+    float screenHeightF = static_cast<float>(screenHeight);
+    float fovRadians = 70.0f * 3.14159265f / 180.0f;
+
+    // Inset amount to shrink hitbox slightly (avoid z-fighting with ground)
+    float inset = 0.002f;
+
+    Tesselator& t = Tesselator::getInstance();
+
+    // Render hitbox for each entity
+    for (const auto& entity : minecraft->level->entities) {
+        if (!entity || entity->removed) continue;
+
+        // Use same interpolation as model rendering: prevPos + (pos - prevPos) * partialTick
+        double ix = entity->prevX + (entity->x - entity->prevX) * partialTick;
+        double iy = entity->prevY + (entity->y - entity->prevY) * partialTick;
+        double iz = entity->prevZ + (entity->z - entity->prevZ) * partialTick;
+
+        // Build hitbox at interpolated position (matching how bb is calculated)
+        float hw = entity->bbWidth / 2.0f;
+        float x0 = static_cast<float>(ix - hw) + inset;
+        float y0 = static_cast<float>(iy - entity->heightOffset + entity->ySlideOffset) + inset;
+        float z0 = static_cast<float>(iz - hw) + inset;
+        float x1 = static_cast<float>(ix + hw) - inset;
+        float y1 = static_cast<float>(iy - entity->heightOffset + entity->ySlideOffset + entity->bbHeight) - inset;
+        float z1 = static_cast<float>(iz + hw) - inset;
+
+        t.begin(DrawMode::Triangles);
+        t.color(1.0f, 1.0f, 1.0f, 1.0f);  // Solid white
+
+        // Bottom face edges (4 lines)
+        drawLineAsQuad(t, x0, y0, z0, x1, y0, z0, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians, 0, 0, 0, 0);
+        drawLineAsQuad(t, x1, y0, z0, x1, y0, z1, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians, 0, 0, 0, 0);
+        drawLineAsQuad(t, x1, y0, z1, x0, y0, z1, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians, 0, 0, 0, 0);
+        drawLineAsQuad(t, x0, y0, z1, x0, y0, z0, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians, 0, 0, 0, 0);
+
+        // Top face edges (4 lines)
+        drawLineAsQuad(t, x0, y1, z0, x1, y1, z0, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians, 0, 0, 0, 0);
+        drawLineAsQuad(t, x1, y1, z0, x1, y1, z1, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians, 0, 0, 0, 0);
+        drawLineAsQuad(t, x1, y1, z1, x0, y1, z1, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians, 0, 0, 0, 0);
+        drawLineAsQuad(t, x0, y1, z1, x0, y1, z0, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians, 0, 0, 0, 0);
+
+        // Vertical edges (4 lines)
+        drawLineAsQuad(t, x0, y0, z0, x0, y1, z0, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians, 0, 0, 0, 0);
+        drawLineAsQuad(t, x1, y0, z0, x1, y1, z0, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians, 0, 0, 0, 0);
+        drawLineAsQuad(t, x1, y0, z1, x1, y1, z1, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians, 0, 0, 0, 0);
+        drawLineAsQuad(t, x0, y0, z1, x0, y1, z1, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians, 0, 0, 0, 0);
+
+        t.end();
+    }
+
+    device.setCullFace(true, CullMode::Back);
+    device.setDepthWrite(true);
 
     // Switch back to world shader
     ShaderManager::getInstance().useWorldShader();

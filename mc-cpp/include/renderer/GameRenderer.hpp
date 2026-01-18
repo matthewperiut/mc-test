@@ -57,6 +57,7 @@ public:
     void renderWorld(float partialTick);
     void renderHand(float partialTick);
     void renderHitOutline();
+    void renderEntityHitboxes(float partialTick);
     void renderBreakingAnimation(float progress);
     void renderGui(float partialTick);
 

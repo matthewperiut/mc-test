@@ -67,6 +67,7 @@ public:
 
     // Debug
     bool showDebug;
+    bool showHitboxes;
 
     // Constructor/Destructor
     Minecraft();
