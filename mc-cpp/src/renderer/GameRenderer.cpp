@@ -415,11 +415,21 @@ void GameRenderer::renderBreakingAnimation(float progress) {
 }
 
 // Helper to generate a camera-facing quad for a line segment with screen-space pixel thickness
+// ox, oy, oz: outward offset direction (should be normalized), scaled by 'outwardDist'
 static void drawLineAsQuad(Tesselator& t,
                            float x0, float y0, float z0,
                            float x1, float y1, float z1,
                            float camX, float camY, float camZ,
-                           float pixelWidth, float screenHeight, float fovRadians) {
+                           float pixelWidth, float screenHeight, float fovRadians,
+                           float ox, float oy, float oz, float outwardDist) {
+    // Apply outward offset to push the line away from block center
+    x0 += ox * outwardDist;
+    y0 += oy * outwardDist;
+    z0 += oz * outwardDist;
+    x1 += ox * outwardDist;
+    y1 += oy * outwardDist;
+    z1 += oz * outwardDist;
+
     // Line direction
     float dirX = x1 - x0;
     float dirY = y1 - y0;
@@ -478,6 +488,45 @@ static void drawLineAsQuad(Tesselator& t,
     t.vertex(dx, dy, dz);
 }
 
+// Helper to check if a block position is solid (has a tile)
+static bool isSolidBlock(Level* level, int x, int y, int z) {
+    if (!level) return false;
+    Tile* tile = level->getTileAt(x, y, z);
+    return tile != nullptr && tile->solid;
+}
+
+// Compute the actual vertex position for a corner, pushing outward only where there's empty space
+// bx, by, bz: block position
+// sx, sy, sz: corner direction from block center (-1 or +1)
+// baseX/Y/Z: the corner's base position on the block surface
+// expand: how much to expand outward in free directions
+// contract: how much to pull back from neighbor blocks
+static void computeVertexPosition(Level* level, int bx, int by, int bz,
+                                   int sx, int sy, int sz,
+                                   float baseX, float baseY, float baseZ,
+                                   float expand, float contract,
+                                   float& outX, float& outY, float& outZ) {
+    // Check face neighbors - if a neighbor exists, contract away from it instead of expanding
+    bool faceX = isSolidBlock(level, bx + sx, by, bz);
+    bool faceY = isSolidBlock(level, bx, by + sy, bz);
+    bool faceZ = isSolidBlock(level, bx, by, bz + sz);
+
+    // Start at block surface (no expansion)
+    outX = baseX;
+    outY = baseY;
+    outZ = baseZ;
+
+    // Expand outward in free directions, contract inward where neighbors exist
+    if (!faceX) outX += static_cast<float>(sx) * expand;
+    else        outX -= static_cast<float>(sx) * contract;  // Pull back from neighbor
+
+    if (!faceY) outY += static_cast<float>(sy) * expand;
+    else        outY -= static_cast<float>(sy) * contract;
+
+    if (!faceZ) outZ += static_cast<float>(sz) * expand;
+    else        outZ -= static_cast<float>(sz) * contract;
+}
+
 void GameRenderer::renderHitOutline() {
     if (!hitResult.isTile()) return;
 
@@ -497,27 +546,27 @@ void GameRenderer::renderHitOutline() {
     int by = hitResult.y;
     int bz = hitResult.z;
 
-    float ss = 0.002f;
-
     // Get the tile's selection box (supports custom hitboxes like torches)
+    // These are the BASE positions on the block surface (no expansion yet)
     float x0, y0, z0, x1, y1, z1;
     Tile* tile = minecraft->level ? minecraft->level->getTileAt(bx, by, bz) : nullptr;
+    Level* level = minecraft->level.get();
     if (tile) {
-        AABB selBox = tile->getSelectionBox(minecraft->level.get(), bx, by, bz);
-        x0 = static_cast<float>(selBox.x0) - ss;
-        y0 = static_cast<float>(selBox.y0) - ss;
-        z0 = static_cast<float>(selBox.z0) - ss;
-        x1 = static_cast<float>(selBox.x1) + ss;
-        y1 = static_cast<float>(selBox.y1) + ss;
-        z1 = static_cast<float>(selBox.z1) + ss;
+        AABB selBox = tile->getSelectionBox(level, bx, by, bz);
+        x0 = static_cast<float>(selBox.x0);
+        y0 = static_cast<float>(selBox.y0);
+        z0 = static_cast<float>(selBox.z0);
+        x1 = static_cast<float>(selBox.x1);
+        y1 = static_cast<float>(selBox.y1);
+        z1 = static_cast<float>(selBox.z1);
     } else {
         // Fallback to full block
-        x0 = static_cast<float>(bx) - ss;
-        y0 = static_cast<float>(by) - ss;
-        z0 = static_cast<float>(bz) - ss;
-        x1 = static_cast<float>(bx) + 1.0f + ss;
-        y1 = static_cast<float>(by) + 1.0f + ss;
-        z1 = static_cast<float>(bz) + 1.0f + ss;
+        x0 = static_cast<float>(bx);
+        y0 = static_cast<float>(by);
+        z0 = static_cast<float>(bz);
+        x1 = static_cast<float>(bx) + 1.0f;
+        y1 = static_cast<float>(by) + 1.0f;
+        z1 = static_cast<float>(bz) + 1.0f;
     }
 
     // Camera position
@@ -530,27 +579,68 @@ void GameRenderer::renderHitOutline() {
     float screenHeightF = static_cast<float>(screenHeight);
     float fovRadians = 70.0f * 3.14159265f / 180.0f;  // 70 degree FOV in radians
 
+    // How much to expand outward in free directions
+    float expand = 0.002f;
+    // How much to pull back from neighbor blocks
+    float contract = 0.005f;
+
+    // Compute vertex positions for all 8 corners
+    // Each corner expands outward only in directions without neighbor blocks
+    float vx, vy, vz;
+
+    // LBF: x0, y0, z0 (corner direction: -1, -1, -1)
+    computeVertexPosition(level, bx, by, bz, -1, -1, -1, x0, y0, z0, expand, contract, vx, vy, vz);
+    float vLBF_x = vx, vLBF_y = vy, vLBF_z = vz;
+
+    // RBF: x1, y0, z0 (corner direction: +1, -1, -1)
+    computeVertexPosition(level, bx, by, bz, 1, -1, -1, x1, y0, z0, expand, contract, vx, vy, vz);
+    float vRBF_x = vx, vRBF_y = vy, vRBF_z = vz;
+
+    // RBK: x1, y0, z1 (corner direction: +1, -1, +1)
+    computeVertexPosition(level, bx, by, bz, 1, -1, 1, x1, y0, z1, expand, contract, vx, vy, vz);
+    float vRBK_x = vx, vRBK_y = vy, vRBK_z = vz;
+
+    // LBK: x0, y0, z1 (corner direction: -1, -1, +1)
+    computeVertexPosition(level, bx, by, bz, -1, -1, 1, x0, y0, z1, expand, contract, vx, vy, vz);
+    float vLBK_x = vx, vLBK_y = vy, vLBK_z = vz;
+
+    // LTF: x0, y1, z0 (corner direction: -1, +1, -1)
+    computeVertexPosition(level, bx, by, bz, -1, 1, -1, x0, y1, z0, expand, contract, vx, vy, vz);
+    float vLTF_x = vx, vLTF_y = vy, vLTF_z = vz;
+
+    // RTF: x1, y1, z0 (corner direction: +1, +1, -1)
+    computeVertexPosition(level, bx, by, bz, 1, 1, -1, x1, y1, z0, expand, contract, vx, vy, vz);
+    float vRTF_x = vx, vRTF_y = vy, vRTF_z = vz;
+
+    // RTK: x1, y1, z1 (corner direction: +1, +1, +1)
+    computeVertexPosition(level, bx, by, bz, 1, 1, 1, x1, y1, z1, expand, contract, vx, vy, vz);
+    float vRTK_x = vx, vRTK_y = vy, vRTK_z = vz;
+
+    // LTK: x0, y1, z1 (corner direction: -1, +1, +1)
+    computeVertexPosition(level, bx, by, bz, -1, 1, 1, x0, y1, z1, expand, contract, vx, vy, vz);
+    float vLTK_x = vx, vLTK_y = vy, vLTK_z = vz;
+
     Tesselator& t = Tesselator::getInstance();
     t.begin(DrawMode::Triangles);
     t.color(0.0f, 0.0f, 0.0f, 0.4f);
 
     // Bottom face edges (4 lines)
-    drawLineAsQuad(t, x0, y0, z0, x1, y0, z0, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians);
-    drawLineAsQuad(t, x1, y0, z0, x1, y0, z1, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians);
-    drawLineAsQuad(t, x1, y0, z1, x0, y0, z1, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians);
-    drawLineAsQuad(t, x0, y0, z1, x0, y0, z0, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians);
+    drawLineAsQuad(t, vLBF_x, vLBF_y, vLBF_z, vRBF_x, vRBF_y, vRBF_z, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians, 0, 0, 0, 0);
+    drawLineAsQuad(t, vRBF_x, vRBF_y, vRBF_z, vRBK_x, vRBK_y, vRBK_z, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians, 0, 0, 0, 0);
+    drawLineAsQuad(t, vRBK_x, vRBK_y, vRBK_z, vLBK_x, vLBK_y, vLBK_z, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians, 0, 0, 0, 0);
+    drawLineAsQuad(t, vLBK_x, vLBK_y, vLBK_z, vLBF_x, vLBF_y, vLBF_z, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians, 0, 0, 0, 0);
 
     // Top face edges (4 lines)
-    drawLineAsQuad(t, x0, y1, z0, x1, y1, z0, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians);
-    drawLineAsQuad(t, x1, y1, z0, x1, y1, z1, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians);
-    drawLineAsQuad(t, x1, y1, z1, x0, y1, z1, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians);
-    drawLineAsQuad(t, x0, y1, z1, x0, y1, z0, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians);
+    drawLineAsQuad(t, vLTF_x, vLTF_y, vLTF_z, vRTF_x, vRTF_y, vRTF_z, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians, 0, 0, 0, 0);
+    drawLineAsQuad(t, vRTF_x, vRTF_y, vRTF_z, vRTK_x, vRTK_y, vRTK_z, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians, 0, 0, 0, 0);
+    drawLineAsQuad(t, vRTK_x, vRTK_y, vRTK_z, vLTK_x, vLTK_y, vLTK_z, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians, 0, 0, 0, 0);
+    drawLineAsQuad(t, vLTK_x, vLTK_y, vLTK_z, vLTF_x, vLTF_y, vLTF_z, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians, 0, 0, 0, 0);
 
     // Vertical edges (4 lines)
-    drawLineAsQuad(t, x0, y0, z0, x0, y1, z0, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians);
-    drawLineAsQuad(t, x1, y0, z0, x1, y1, z0, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians);
-    drawLineAsQuad(t, x1, y0, z1, x1, y1, z1, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians);
-    drawLineAsQuad(t, x0, y0, z1, x0, y1, z1, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians);
+    drawLineAsQuad(t, vLBF_x, vLBF_y, vLBF_z, vLTF_x, vLTF_y, vLTF_z, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians, 0, 0, 0, 0);
+    drawLineAsQuad(t, vRBF_x, vRBF_y, vRBF_z, vRTF_x, vRTF_y, vRTF_z, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians, 0, 0, 0, 0);
+    drawLineAsQuad(t, vRBK_x, vRBK_y, vRBK_z, vRTK_x, vRTK_y, vRTK_z, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians, 0, 0, 0, 0);
+    drawLineAsQuad(t, vLBK_x, vLBK_y, vLBK_z, vLTK_x, vLTK_y, vLTK_z, camX, camY, camZ, pixelWidth, screenHeightF, fovRadians, 0, 0, 0, 0);
 
     t.end();
 
