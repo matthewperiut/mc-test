@@ -242,7 +242,6 @@ set(RENDERER_SOURCES
         src/renderer/LevelRenderer.cpp
         src/renderer/GameRenderer.cpp
         src/renderer/Frustum.cpp
-        src/renderer/ShaderProgram.cpp
         src/renderer/GLSLTranspiler.cpp
         src/renderer/MatrixStack.cpp
         src/renderer/ShaderManager.cpp
