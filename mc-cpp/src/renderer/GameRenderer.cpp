@@ -575,7 +575,11 @@ void GameRenderer::renderHitOutline() {
     float camZ = static_cast<float>(player->z);
 
     // Screen-space line parameters
-    float pixelWidth = 2.0f;  // 2 pixels like OpenGL glLineWidth(2.0f)
+    // Detect HiDPI scale factor (framebuffer pixels vs window coordinates)
+    float scaleFactor = (minecraft->screenWidth > 0)
+        ? static_cast<float>(minecraft->framebufferWidth) / static_cast<float>(minecraft->screenWidth)
+        : 1.0f;
+    float pixelWidth = 2.0f * scaleFactor;  // 2 pixels, doubled for HiDPI
     float screenHeightF = static_cast<float>(screenHeight);
     float fovRadians = 70.0f * 3.14159265f / 180.0f;  // 70 degree FOV in radians
 
