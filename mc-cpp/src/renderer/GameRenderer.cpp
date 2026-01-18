@@ -163,7 +163,7 @@ void GameRenderer::pick(float partialTick) {
     // Start with block raycasting
     Vec3 eyePos(
         player->getInterpolatedX(partialTick),
-        player->getInterpolatedY(partialTick) + player->eyeHeight,
+        player->getInterpolatedY(partialTick) + player->eyeHeight - player->getInterpolatedYSlideOffset(partialTick),
         player->getInterpolatedZ(partialTick)
     );
     Vec3 look = player->getLookVector();

@@ -156,7 +156,7 @@ void TileRenderer::renderBlockItem(Tile* tile, float scale) {
     t.vertexUV(x1, y0, z1, u1, v1);
     t.vertexUV(x1, y1, z1, u1, v0);
 
-    // West face (X-) - Java renderWest
+    // West face (X-) - Java renderWest: high Z → u1, low Z → u0
     getUV(tile->getTexture(4), u0, v0, u1, v1);
     t.color(c3, c3, c3);
     t.vertexUV(x0, y1, z1, u1, v0);
@@ -164,7 +164,7 @@ void TileRenderer::renderBlockItem(Tile* tile, float scale) {
     t.vertexUV(x0, y0, z0, u0, v1);
     t.vertexUV(x0, y0, z1, u1, v1);
 
-    // East face (X+) - Java renderEast
+    // East face (X+) - Java renderEast: high Z → u0, low Z → u1
     getUV(tile->getTexture(5), u0, v0, u1, v1);
     t.color(c3, c3, c3);
     t.vertexUV(x1, y0, z1, u0, v1);
@@ -502,22 +502,22 @@ void TileRenderer::renderFaceWest(Tile* /*tile*/, double x, double y, double z, 
     float u0, v0, u1, v1;
     getUV(texture, u0, v0, u1, v1);
 
-    // West face (x = x)
-    t.vertexUV(x, y,     z,     u1, v1);
-    t.vertexUV(x, y,     z + 1, u0, v1);
-    t.vertexUV(x, y + 1, z + 1, u0, v0);
-    t.vertexUV(x, y + 1, z,     u1, v0);
+    // West face (x = x) - Java renderWest: high Z → u1, low Z → u0
+    t.vertexUV(x, y + 1, z + 1, u1, v0);
+    t.vertexUV(x, y + 1, z,     u0, v0);
+    t.vertexUV(x, y,     z,     u0, v1);
+    t.vertexUV(x, y,     z + 1, u1, v1);
 }
 
 void TileRenderer::renderFaceEast(Tile* /*tile*/, double x, double y, double z, int texture) {
     float u0, v0, u1, v1;
     getUV(texture, u0, v0, u1, v1);
 
-    // East face (x = x + 1)
-    t.vertexUV(x + 1, y + 1, z,     u0, v0);
-    t.vertexUV(x + 1, y + 1, z + 1, u1, v0);
-    t.vertexUV(x + 1, y,     z + 1, u1, v1);
-    t.vertexUV(x + 1, y,     z,     u0, v1);
+    // East face (x = x + 1) - Java renderEast: high Z → u0, low Z → u1
+    t.vertexUV(x + 1, y,     z + 1, u0, v1);
+    t.vertexUV(x + 1, y,     z,     u1, v1);
+    t.vertexUV(x + 1, y + 1, z,     u1, v0);
+    t.vertexUV(x + 1, y + 1, z + 1, u0, v0);
 }
 
 void TileRenderer::renderCross(Tile* tile, int x, int y, int z) {
@@ -739,17 +739,17 @@ void TileRenderer::renderCactus(Tile* tile, int x, int y, int z) {
     // West/East faces (0.6 multiplier)
     t.color(0.6f, 0.6f, 0.6f);
 
-    // West (inset)
-    t.vertexUV(x + offset, y,     z,     u1, v1);
-    t.vertexUV(x + offset, y,     z + 1, u0, v1);
-    t.vertexUV(x + offset, y + 1, z + 1, u0, v0);
-    t.vertexUV(x + offset, y + 1, z,     u1, v0);
+    // West (inset) - Java renderWest: high Z → u1, low Z → u0
+    t.vertexUV(x + offset, y + 1, z + 1, u1, v0);
+    t.vertexUV(x + offset, y + 1, z,     u0, v0);
+    t.vertexUV(x + offset, y,     z,     u0, v1);
+    t.vertexUV(x + offset, y,     z + 1, u1, v1);
 
-    // East (inset)
-    t.vertexUV(x + 1 - offset, y + 1, z,     u0, v0);
-    t.vertexUV(x + 1 - offset, y + 1, z + 1, u1, v0);
-    t.vertexUV(x + 1 - offset, y,     z + 1, u1, v1);
-    t.vertexUV(x + 1 - offset, y,     z,     u0, v1);
+    // East (inset) - Java renderEast: high Z → u0, low Z → u1
+    t.vertexUV(x + 1 - offset, y,     z + 1, u0, v1);
+    t.vertexUV(x + 1 - offset, y,     z,     u1, v1);
+    t.vertexUV(x + 1 - offset, y + 1, z,     u1, v0);
+    t.vertexUV(x + 1 - offset, y + 1, z + 1, u0, v0);
 
     // Top and bottom
     if (shouldRenderFace(x, y, z, 1)) {
