@@ -19,14 +19,7 @@
 #include "phys/Vec3.hpp"
 #include "phys/AABB.hpp"
 #include "renderer/backend/RenderDevice.hpp"
-#ifdef MC_RENDERER_METAL
-#include "renderer/backend/metal/MTLRenderDevice.hpp"
-#include "renderer/backend/metal/MetalBridge.h"
-#endif
-
-#ifndef MC_RENDERER_METAL
-#include <GL/glew.h>
-#endif
+#include "renderer/backend/RenderContext.hpp"
 #include <GLFW/glfw3.h>
 #include <iostream>
 #include <chrono>
@@ -116,18 +109,9 @@ bool Minecraft::init(int width, int height, bool fs) {
         return false;
     }
 
-    // Create window - Metal needs GLFW_NO_API, OpenGL requests highest available
-#ifdef MC_RENDERER_METAL
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-#else
-    // Request 3.3 core to test if rendering works with 3.3
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    #ifdef __APPLE__
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-    #endif
-#endif
+    // Create render context (handles backend-specific window configuration)
+    auto renderContext = createRenderContext();
+    renderContext->configureWindowHints();
 
     GLFWmonitor* monitor = fullscreen ? glfwGetPrimaryMonitor() : nullptr;
     window = glfwCreateWindow(screenWidth, screenHeight, "Minecraft C++", monitor, nullptr);
@@ -138,9 +122,15 @@ bool Minecraft::init(int width, int height, bool fs) {
         return false;
     }
 
-#ifndef MC_RENDERER_METAL
-    glfwMakeContextCurrent(window);
-#endif
+    // Initialize render context (platform-specific setup)
+    if (!renderContext->init(window)) {
+        std::cerr << "Failed to initialize render context" << std::endl;
+        glfwDestroyWindow(window);
+        glfwTerminate();
+        return false;
+    }
+
+    RenderContext::setInstance(std::move(renderContext));
     glfwSetWindowUserPointer(window, this);
 
     // Get actual framebuffer size (important for HiDPI displays)
@@ -156,12 +146,7 @@ bool Minecraft::init(int width, int height, bool fs) {
     // Load options
     options.load("options.txt");
 
-#ifndef MC_RENDERER_METAL
-    // Apply vsync setting from options (OpenGL)
-    glfwSwapInterval(options.vsync ? 1 : 0);
-#endif
-
-    // Initialize render device (handles GLEW init for OpenGL)
+    // Initialize render device (handles GLEW init for OpenGL, Metal setup)
     RenderDevice::setInstance(createRenderDevice());
     if (!RenderDevice::get().init(window)) {
         std::cerr << "Failed to initialize render device" << std::endl;
@@ -170,10 +155,8 @@ bool Minecraft::init(int width, int height, bool fs) {
         return false;
     }
 
-#ifdef MC_RENDERER_METAL
-    // Apply vsync setting from options (Metal)
-    RenderDevice::get().setVsync(options.vsync);
-#endif
+    // Apply vsync setting from options (handled by render context per-backend)
+    RenderContext::get()->setVsync(options.vsync);
 
     // Initialize rendering state
     initGL();
@@ -289,12 +272,11 @@ void Minecraft::createLevel(int width, int height, int depth) {
 void Minecraft::run() {
     auto lastTime = std::chrono::high_resolution_clock::now();
     auto& device = RenderDevice::get();
+    auto* context = RenderContext::get();
 
     while (running && !glfwWindowShouldClose(window)) {
-#ifdef MC_RENDERER_METAL
-        // Create autorelease pool at start of frame to capture all autoreleased Metal objects
-        void* autoreleasePool = metalCreateAutoreleasePool();
-#endif
+        // Per-frame setup (Metal: create autorelease pool, OpenGL: no-op)
+        context->beginFrame();
 
         auto currentTime = std::chrono::high_resolution_clock::now();
         lastTime = currentTime;
@@ -323,13 +305,9 @@ void Minecraft::run() {
         device.endFrame();
         device.present();
 
-#ifdef MC_RENDERER_METAL
-        // Release autorelease pool at end of frame - this cleans up all autoreleased objects
-        metalReleaseAutoreleasePool(autoreleasePool);
-#else
-        // Swap buffers (OpenGL only - Metal presents in device.present())
-        glfwSwapBuffers(window);
-#endif
+        // Platform-specific buffer swap or cleanup
+        context->swapBuffers();  // OpenGL: swaps buffers, Metal: no-op
+        context->endFrame();     // Metal: releases autorelease pool, OpenGL: no-op
 
         // Update FPS counter
         updateFps();
@@ -699,10 +677,10 @@ void Minecraft::onResize(int width, int height) {
     // Update viewport
     RenderDevice::get().setViewport(0, 0, framebufferWidth, framebufferHeight);
 
-#ifdef MC_RENDERER_METAL
-    // Metal needs to recreate drawable on resize
-    static_cast<MTLRenderDevice&>(RenderDevice::get()).handleResize(framebufferWidth, framebufferHeight);
-#endif
+    // Handle platform-specific resize (Metal: recreates drawable, OpenGL: no-op)
+    if (RenderContext::get()) {
+        RenderContext::get()->handleResize(framebufferWidth, framebufferHeight);
+    }
 
     if (gameRenderer) {
         gameRenderer->resize(framebufferWidth, framebufferHeight);
@@ -806,6 +784,11 @@ void Minecraft::shutdown() {
     // Shutdown render device
     if (RenderDevice::hasInstance()) {
         RenderDevice::get().shutdown();
+    }
+
+    // Shutdown render context
+    if (RenderContext::get()) {
+        RenderContext::get()->shutdown();
     }
 
     // Destroy window

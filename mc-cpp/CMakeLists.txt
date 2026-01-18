@@ -316,10 +316,12 @@ set(GAMEMODE_SOURCES
 # =============================================================================
 set(BACKEND_COMMON_SOURCES
         src/renderer/backend/RenderDevice.cpp
+        src/renderer/backend/RenderContext.cpp
 )
 
 set(BACKEND_OPENGL_SOURCES
         src/renderer/backend/opengl/GLRenderDevice.cpp
+        src/renderer/backend/opengl/GLRenderContext.cpp
         src/renderer/backend/opengl/GLShaderPipeline.cpp
         src/renderer/backend/opengl/GLVertexBuffer.cpp
         src/renderer/backend/opengl/GLTexture.cpp
@@ -328,6 +330,7 @@ set(BACKEND_OPENGL_SOURCES
 set(BACKEND_METAL_SOURCES
         src/renderer/backend/metal/MetalCppImpl.cpp
         src/renderer/backend/metal/MTLRenderDevice.cpp
+        src/renderer/backend/metal/MTLRenderContext.cpp
         src/renderer/backend/metal/MTLShaderPipeline.cpp
         src/renderer/backend/metal/MTLVertexBuffer.cpp
         src/renderer/backend/metal/MTLTexture.cpp

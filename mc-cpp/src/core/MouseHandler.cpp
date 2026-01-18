@@ -43,10 +43,12 @@ void MouseHandler::release() {
         glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_FALSE);
     }
 
+#ifndef GLFW_PLATFORM_WAYLAND
     // Center the cursor in the window
     int width, height;
     glfwGetWindowSize(window, &width, &height);
     glfwSetCursorPos(window, width / 2.0, height / 2.0);
+#endif
 
     grabbed = false;
 }
