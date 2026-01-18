@@ -12,15 +12,24 @@ ItemEntity::ItemEntity(Level* level, double x, double y, double z, int itemId, i
     , count(count)
     , damage(damage)
     , pickupDelay(10)  // 10 ticks before can be picked up (0.5 seconds)
+    , throwTime(0)     // No additional delay for normal spawns
     , age(0)
     , lifespan(6000)   // 5 minutes
     , bobOffset(Mth::random() * Mth::PI * 2.0f)
+    , beingPickedUp(false)
+    , pickupTarget(nullptr)
+    , pickupAnimTime(0)
+    , pickupStartX(0), pickupStartY(0), pickupStartZ(0)
 {
     setSize(0.25f, 0.25f);  // Small collision box
     this->x = x;
     this->y = y;
     this->z = z;
     setPos(x, y, z);
+
+    // Shadow properties (matching Java ItemRenderer)
+    shadowRadius = 0.15f;
+    shadowStrength = 0.75f;
 
     // Random initial velocity (like Java)
     xd = (Mth::random() * 0.2 - 0.1);
@@ -30,7 +39,51 @@ ItemEntity::ItemEntity(Level* level, double x, double y, double z, int itemId, i
     yRot = Mth::random() * 360.0f;
 }
 
+ItemEntity::ItemEntity(Level* level, double x, double y, double z, int itemId, int count, int damage,
+                       double vx, double vy, double vz, int throwDelay)
+    : Entity(level)
+    , itemId(itemId)
+    , count(count)
+    , damage(damage)
+    , pickupDelay(0)        // Can be picked up immediately (throwTime handles delay)
+    , throwTime(throwDelay) // 40 ticks for player drops
+    , age(0)
+    , lifespan(6000)        // 5 minutes
+    , bobOffset(Mth::random() * Mth::PI * 2.0f)
+    , beingPickedUp(false)
+    , pickupTarget(nullptr)
+    , pickupAnimTime(0)
+    , pickupStartX(0), pickupStartY(0), pickupStartZ(0)
+{
+    setSize(0.25f, 0.25f);  // Small collision box
+    this->x = x;
+    this->y = y;
+    this->z = z;
+    setPos(x, y, z);
+
+    // Shadow properties (matching Java ItemRenderer)
+    shadowRadius = 0.15f;
+    shadowStrength = 0.75f;
+
+    // Use provided velocity
+    xd = vx;
+    yd = vy;
+    zd = vz;
+
+    yRot = Mth::random() * 360.0f;
+}
+
 void ItemEntity::tick() {
+    // Handle pickup animation
+    if (beingPickedUp) {
+        pickupAnimTime++;
+        if (pickupAnimTime >= 3) {
+            // Animation complete - actually remove the item
+            removed = true;
+        }
+        return;  // Don't do normal physics during pickup animation
+    }
+
     // Store previous position
     prevX = x;
     prevY = y;
@@ -46,6 +99,11 @@ void ItemEntity::tick() {
     // Decrease pickup delay
     if (pickupDelay > 0) {
         pickupDelay--;
+    }
+
+    // Decrease throw time
+    if (throwTime > 0) {
+        throwTime--;
     }
 
     // Apply gravity
@@ -79,7 +137,7 @@ void ItemEntity::tick() {
     }
 
     // Check for player pickup
-    if (pickupDelay <= 0 && level) {
+    if (pickupDelay <= 0 && throwTime <= 0 && level) {
         for (Player* player : level->players) {
             if (player && canPickUp(player)) {
                 playerPickUp(player);
@@ -90,7 +148,7 @@ void ItemEntity::tick() {
 }
 
 bool ItemEntity::canPickUp(Player* player) const {
-    if (!player || pickupDelay > 0) return false;
+    if (!player || pickupDelay > 0 || throwTime > 0 || beingPickedUp) return false;
 
     // Check distance - pickup radius is about 1.5 blocks
     double dx = player->x - x;
@@ -102,13 +160,13 @@ bool ItemEntity::canPickUp(Player* player) const {
 }
 
 bool ItemEntity::playerPickUp(Player* player) {
-    if (!player || removed) return false;
+    if (!player || removed || beingPickedUp) return false;
 
     // Try to add to player inventory
     if (player->inventory) {
         if (player->inventory->add(itemId, count, damage)) {
-            // Successfully added all items
-            removed = true;
+            // Successfully added all items - start pickup animation
+            startPickupAnimation(player);
 
             // Play pickup sound
             playSound("random.pop", 0.2f,
@@ -119,6 +177,39 @@ bool ItemEntity::playerPickUp(Player* player) {
     }
 
     return false;  // Inventory full
+}
+
+void ItemEntity::startPickupAnimation(Player* player) {
+    beingPickedUp = true;
+    pickupTarget = player;
+    pickupAnimTime = 0;
+    pickupStartX = x;
+    pickupStartY = y;
+    pickupStartZ = z;
+}
+
+void ItemEntity::getPickupAnimatedPos(float partialTick, double& outX, double& outY, double& outZ) const {
+    if (!beingPickedUp || !pickupTarget) {
+        outX = prevX + (x - prevX) * partialTick;
+        outY = prevY + (y - prevY) * partialTick;
+        outZ = prevZ + (z - prevZ) * partialTick;
+        return;
+    }
+
+    // Calculate interpolation factor (0 to 1 over 3 ticks)
+    float t = (static_cast<float>(pickupAnimTime) + partialTick) / 3.0f;
+    t = t * t;  // Quadratic ease-in (matching Java TakeAnimationParticle)
+
+    // Get player's interpolated position
+    double playerX = pickupTarget->prevX + (pickupTarget->x - pickupTarget->prevX) * partialTick;
+    double playerY = pickupTarget->prevY + (pickupTarget->y - pickupTarget->prevY) * partialTick;
+    playerY += pickupTarget->eyeHeight * 0.5;  // Aim for chest area
+    double playerZ = pickupTarget->prevZ + (pickupTarget->z - pickupTarget->prevZ) * partialTick;
+
+    // Interpolate from start position to player
+    outX = pickupStartX + (playerX - pickupStartX) * t;
+    outY = pickupStartY + (playerY - pickupStartY) * t;
+    outZ = pickupStartZ + (playerZ - pickupStartZ) * t;
 }
 
 void ItemEntity::tryMergeNearbyItems() {
@@ -132,6 +223,7 @@ void ItemEntity::tryMergeNearbyItems() {
         ItemEntity* other = dynamic_cast<ItemEntity*>(entity);
         if (!other || other == this || other->removed) continue;
         if (other->itemId != itemId || other->damage != damage) continue;
+        if (other->beingPickedUp) continue;  // Don't merge with items being picked up
 
         // Merge into this stack
         int spaceLeft = 64 - count;

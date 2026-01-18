@@ -38,6 +38,8 @@ Entity::Entity(Level* level)
     , prevYSlideOffset(0.0f)
     , noClip(false)
     , blocksBuilding(false)  // Java: Entity sets this to false, Mob sets to true
+    , shadowRadius(0.0f)     // Default no shadow, subclasses override
+    , shadowStrength(1.0f)   // Default full strength
     , level(level)
     , entityId(nextEntityId++)
 {

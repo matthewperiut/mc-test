@@ -1,7 +1,9 @@
 #include "entity/Player.hpp"
+#include "entity/ItemEntity.hpp"
 #include "world/Level.hpp"
 #include "util/Mth.hpp"
 #include <algorithm>
+#include <cmath>
 
 namespace mc {
 
@@ -217,6 +219,63 @@ bool Player::placeBlock(int x, int y, int z, int /*face*/, int blockId) {
     // Note: swing() is NOT called here - Java calls swing() BEFORE placement in Minecraft::handleMouseClick(),
     // not in this method. The swing is triggered in Minecraft::handleInput().
     return true;
+}
+
+void Player::drop() {
+    if (!inventory || !level) return;
+
+    // Remove 1 item from selected slot
+    ItemStack removed = inventory->removeItem(inventory->selected, 1);
+    if (removed.isEmpty()) return;
+
+    // Drop the item
+    drop(removed.id, removed.count, removed.damage, false);
+}
+
+void Player::drop(int itemId, int count, int damage, bool deathThrow) {
+    if (!level || itemId <= 0 || count <= 0) return;
+
+    // Spawn position: at eye level minus 0.3 (matching Java)
+    double spawnX = this->x;
+    double spawnY = this->y - 0.3 + eyeHeight;
+    double spawnZ = this->z;
+
+    double vx, vy, vz;
+
+    if (deathThrow) {
+        // Random velocity for death drops (matching Java Player.drop with var2=true)
+        float speed = Mth::random() * 0.5f;
+        float angle = Mth::random() * Mth::PI * 2.0f;
+        vx = -std::sin(angle) * speed;
+        vz = std::cos(angle) * speed;
+        vy = 0.2;
+    } else {
+        // Velocity based on look direction (matching Java Player.drop with var2=false)
+        float yRotRad = yRot / 180.0f * Mth::PI;
+        float xRotRad = xRot / 180.0f * Mth::PI;
+
+        float speed = 0.3f;
+        vx = -std::sin(yRotRad) * std::cos(xRotRad) * speed;
+        vz = std::cos(yRotRad) * std::cos(xRotRad) * speed;
+        vy = -std::sin(xRotRad) * speed + 0.1;
+
+        // Add random perturbation (matching Java)
+        float perturbAngle = Mth::random() * Mth::PI * 2.0f;
+        float perturbMag = 0.02f * Mth::random();
+        vx += std::cos(perturbAngle) * perturbMag;
+        vy += (Mth::random() - Mth::random()) * 0.1;
+        vz += std::sin(perturbAngle) * perturbMag;
+    }
+
+    // Create item entity with velocity and 40 tick throw delay
+    auto itemEntity = std::make_unique<ItemEntity>(
+        level, spawnX, spawnY, spawnZ,
+        itemId, count, damage,
+        vx, vy, vz,
+        40  // throwTime - 40 ticks before can be picked up
+    );
+
+    level->addEntity(std::move(itemEntity));
 }
 
 void Player::playStepSound(int tileId) {

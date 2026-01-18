@@ -63,6 +63,10 @@ public:
     // If true, blocks cannot be placed inside this entity
     bool blocksBuilding;
 
+    // Shadow rendering properties (matching Java EntityRenderer)
+    float shadowRadius;    // Size of shadow (0.15 for items, 0.3 for chicken, 0.5 for player)
+    float shadowStrength;  // Opacity multiplier (default 1.0, items use 0.75)
+
     // Reference to level
     Level* level;
 
@@ -124,7 +128,9 @@ public:
     virtual float getPickRadius() const { return 0.1f; }  // Extra radius for hit detection
 
     // Rendering
-    virtual float getShadowRadius() const { return bbWidth; }
+    virtual float getShadowRadius() const { return shadowRadius; }
+    virtual float getShadowStrength() const { return shadowStrength; }
+    virtual float getShadowHeightOffset() const { return bbHeight / 2.0f; }
     virtual bool shouldRender(double camX, double camY, double camZ, float maxDist) const;
 
 protected:

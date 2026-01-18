@@ -13,6 +13,8 @@
 namespace mc {
 
 class Minecraft;
+class Entity;
+class Tile;
 
 class LevelRenderer : public LevelListener {
 public:
@@ -101,6 +103,11 @@ private:
 
     // Entity rendering helpers
     void renderDroppedItemSprite(int icon, int copies, float playerYRot, unsigned int randomSeed);
+
+    // Shadow rendering
+    void renderEntityShadow(Entity* entity, double x, double y, double z, float power, float partialTick);
+    void renderTileShadow(Tile* tile, double entityX, double entityY, double entityZ,
+                          int tileX, int tileY, int tileZ, float power, float radius);
 
     // Star vertex data for rendering via Tesselator
     std::vector<float> starVertices;

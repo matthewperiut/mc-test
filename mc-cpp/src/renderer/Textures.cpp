@@ -27,9 +27,9 @@ void Textures::destroy() {
     textureCache.clear();
 }
 
-TextureHandle Textures::loadTexture(const std::string& path, bool useMipmaps) {
-    // Include mipmap setting in cache key to allow same texture with different settings
-    std::string cacheKey = path + (useMipmaps ? ":mip" : ":nomip");
+TextureHandle Textures::loadTexture(const std::string& path, bool useMipmaps, bool clamp) {
+    // Include mipmap and clamp settings in cache key to allow same texture with different settings
+    std::string cacheKey = path + (useMipmaps ? ":mip" : ":nomip") + (clamp ? ":clamp" : ":repeat");
 
     // Check cache first
     auto it = textureCache.find(cacheKey);
@@ -38,10 +38,10 @@ TextureHandle Textures::loadTexture(const std::string& path, bool useMipmaps) {
     }
 
     // Load new texture
-    return loadTextureFromFile(path, useMipmaps);
+    return loadTextureFromFile(path, useMipmaps, clamp);
 }
 
-Texture* Textures::loadTextureFromFile(const std::string& path, bool useMipmaps) {
+Texture* Textures::loadTextureFromFile(const std::string& path, bool useMipmaps, bool clamp) {
     int width, height, channels;
     stbi_set_flip_vertically_on_load(false);  // Minecraft textures are top-down
 
@@ -56,12 +56,13 @@ Texture* Textures::loadTextureFromFile(const std::string& path, bool useMipmaps)
 
     texture->setFilter(useMipmaps ? TextureFilter::NearestMipmapLinear : TextureFilter::Nearest,
                        TextureFilter::Nearest);
-    texture->setWrap(TextureWrap::Repeat, TextureWrap::Repeat);
+    texture->setWrap(clamp ? TextureWrap::ClampToEdge : TextureWrap::Repeat,
+                     clamp ? TextureWrap::ClampToEdge : TextureWrap::Repeat);
     texture->upload(width, height, data, useMipmaps);
 
     stbi_image_free(data);
 
-    std::string cacheKey = path + (useMipmaps ? ":mip" : ":nomip");
+    std::string cacheKey = path + (useMipmaps ? ":mip" : ":nomip") + (clamp ? ":clamp" : ":repeat");
     Texture* rawPtr = texture.get();
     textureCache[cacheKey] = std::move(texture);
 
@@ -74,8 +75,8 @@ void Textures::bind(TextureHandle textureHandle, int unit) {
     }
 }
 
-void Textures::bind(const std::string& path, int unit, bool useMipmaps) {
-    TextureHandle textureHandle = loadTexture(path, useMipmaps);
+void Textures::bind(const std::string& path, int unit, bool useMipmaps, bool clamp) {
+    TextureHandle textureHandle = loadTexture(path, useMipmaps, clamp);
     bind(textureHandle, unit);
 }
 

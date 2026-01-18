@@ -19,11 +19,12 @@ public:
 
     // Load a texture from file
     // useMipmaps: true for terrain textures, false for mob/entity textures (avoids edge artifacts)
-    TextureHandle loadTexture(const std::string& path, bool useMipmaps = true);
+    // clamp: true for shadow textures, false for tiling textures
+    TextureHandle loadTexture(const std::string& path, bool useMipmaps = true, bool clamp = false);
 
     // Bind texture to a texture unit
     void bind(TextureHandle textureId, int unit = 0);
-    void bind(const std::string& path, int unit = 0, bool useMipmaps = true);
+    void bind(const std::string& path, int unit = 0, bool useMipmaps = true, bool clamp = false);
     bool bindTexture(const std::string& path, int unit = 0);  // Returns false if texture not found
     void unbind(int unit = 0);
 
@@ -47,7 +48,7 @@ private:
 
     std::unordered_map<std::string, std::unique_ptr<Texture>> textureCache;
 
-    Texture* loadTextureFromFile(const std::string& path, bool useMipmaps);
+    Texture* loadTextureFromFile(const std::string& path, bool useMipmaps, bool clamp);
 };
 
 } // namespace mc

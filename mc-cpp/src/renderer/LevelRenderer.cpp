@@ -5,6 +5,7 @@
 #include "renderer/MatrixStack.hpp"
 #include "renderer/ShaderManager.hpp"
 #include "renderer/model/ChickenModel.hpp"
+#include "entity/Entity.hpp"
 #include "entity/ItemEntity.hpp"
 #include "entity/LocalPlayer.hpp"
 #include "entity/Chicken.hpp"
@@ -769,28 +770,78 @@ void LevelRenderer::renderEntities(float partialTick) {
     double camZ = player->getInterpolatedZ(partialTick);
 
     auto& device = RenderDevice::get();
+    Tesselator& t = Tesselator::getInstance();
+
+    // === SHADOW PASS ===
+    // Render entity shadows before the entities themselves
+    device.setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
+    device.setDepthWrite(false);  // Don't write to depth buffer for shadows
+
+    ShaderManager::getInstance().useWorldShader();
+    ShaderManager::getInstance().setAlphaTest(0.0f);  // No alpha test for shadows
+
+    // Bind shadow texture with clamping (prevents texture repeat at edges)
+    Textures::getInstance().bind("resources/misc/shadow.png", 0, false, true);
+
+    // Use identity modelview (camera is already set up in projection)
+    ShaderManager::getInstance().updateMatrices();
+
+    t.begin(DrawMode::Quads);
+
+    for (const auto& entity : level->entities) {
+        if (entity->removed) continue;
+        if (entity->getShadowRadius() <= 0.0f) continue;
+
+        // Calculate distance-based shadow power (fades over 256 blocks)
+        double distSqr = entity->distanceToSqr(camX, camY - player->eyeHeight, camZ);
+        float power = static_cast<float>((1.0 - distSqr / (256.0 * 256.0)) * entity->getShadowStrength());
+
+        if (power > 0.0f) {
+            // Get interpolated position for smooth shadow movement
+            double shadowX = entity->prevX + (entity->x - entity->prevX) * partialTick;
+            double shadowY = entity->prevY + (entity->y - entity->prevY) * partialTick;
+            double shadowZ = entity->prevZ + (entity->z - entity->prevZ) * partialTick;
+
+            // For items being picked up, override with the animated position
+            ItemEntity* item = dynamic_cast<ItemEntity*>(entity.get());
+            if (item && item->beingPickedUp) {
+                item->getPickupAnimatedPos(partialTick, shadowX, shadowY, shadowZ);
+            }
+
+            renderEntityShadow(entity.get(), shadowX, shadowY, shadowZ, power, partialTick);
+        }
+    }
+
+    t.end();
+
+    device.setDepthWrite(true);  // Re-enable depth writing
+
+    // === ENTITY PASS ===
     device.setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
 
     ShaderManager::getInstance().useWorldShader();
     ShaderManager::getInstance().setAlphaTest(0.1f);
 
-    Tesselator& t = Tesselator::getInstance();
-
     for (const auto& entity : level->entities) {
         ItemEntity* item = dynamic_cast<ItemEntity*>(entity.get());
         if (!item || item->removed) continue;
 
-        double ix = item->prevX + (item->x - item->prevX) * partialTick;
-        double iy = item->prevY + (item->y - item->prevY) * partialTick;
-        double iz = item->prevZ + (item->z - item->prevZ) * partialTick;
+        // Get interpolated position (uses pickup animation if active)
+        double ix, iy, iz;
+        item->getPickupAnimatedPos(partialTick, ix, iy, iz);
 
         double dx = ix - camX;
         double dy = iy - camY;
         double dz = iz - camZ;
         if (dx * dx + dy * dy + dz * dz > 64 * 64) continue;
 
-        float bob = std::sin((static_cast<float>(item->age) + partialTick) / 10.0f + item->bobOffset) * 0.1f + 0.1f;
-        float spin = ((static_cast<float>(item->age) + partialTick) / 20.0f + item->bobOffset) * 57.29578f;
+        // Bobbing animation (disabled during pickup)
+        float bob = 0.0f;
+        float spin = 0.0f;
+        if (!item->beingPickedUp) {
+            bob = std::sin((static_cast<float>(item->age) + partialTick) / 10.0f + item->bobOffset) * 0.1f + 0.1f;
+            spin = ((static_cast<float>(item->age) + partialTick) / 20.0f + item->bobOffset) * 57.29578f;
+        }
 
         int copies = 1;
         if (item->count > 1) copies = 2;
@@ -799,8 +850,11 @@ void LevelRenderer::renderEntities(float partialTick) {
 
         unsigned int randomSeed = 187;
 
+        // Height offset to prevent clipping into ground (Java: heightOffset = bbHeight / 2.0 = 0.125)
+        float heightOffset = 0.125f;
+
         MatrixStack::modelview().push();
-        MatrixStack::modelview().translate(static_cast<float>(ix), static_cast<float>(iy + bob), static_cast<float>(iz));
+        MatrixStack::modelview().translate(static_cast<float>(ix), static_cast<float>(iy + bob + heightOffset), static_cast<float>(iz));
 
         if (item->itemId > 0 && item->itemId < 256) {
             Tile* tile = Tile::tiles[item->itemId].get();
@@ -980,6 +1034,92 @@ void LevelRenderer::renderDroppedItemSprite(int icon, int copies, float playerYR
 
         MatrixStack::modelview().pop();
     }
+}
+
+void LevelRenderer::renderEntityShadow(Entity* entity, double x, double y, double z, float power, float partialTick) {
+    if (!entity || !level) return;
+
+    float r = entity->getShadowRadius();
+    if (r <= 0.0f) return;
+
+    // Use the passed position (which may be animated) plus height offset
+    double ex = x;
+    double ey = y + entity->getShadowHeightOffset();
+    double ez = z;
+
+    // Define search bounds around entity
+    int x0 = Mth::floor(ex - r);
+    int x1 = Mth::floor(ex + r);
+    int z0 = Mth::floor(ez - r);
+    int z1 = Mth::floor(ez + r);
+
+    // For Y, search further down to allow shadow to fade over distance
+    // Shadow fades based on vertical distance, so search up to ~2 blocks below entity
+    float shadowDropDistance = 2.0f;
+    int y0 = Mth::floor(ey - shadowDropDistance);
+    int y1 = Mth::floor(ey);
+
+    // Iterate through all blocks in the search area
+    for (int xt = x0; xt <= x1; ++xt) {
+        for (int yt = y0; yt <= y1; ++yt) {
+            for (int zt = z0; zt <= z1; ++zt) {
+                int tileId = level->getTile(xt, yt - 1, zt);  // Get block below this position
+                if (tileId > 0 && level->getSkyLight(xt, yt, zt) > 3) {  // Only if block exists & lit
+                    Tile* tile = Tile::tiles[tileId].get();
+                    if (tile) {
+                        // Pass yt - 1 as the tile Y position (where the actual block is)
+                        renderTileShadow(tile, ex, ey, ez, xt, yt - 1, zt, power, r);
+                    }
+                }
+            }
+        }
+    }
+}
+
+void LevelRenderer::renderTileShadow(Tile* tile, double entityX, double entityY, double entityZ,
+                                      int tileX, int tileY, int tileZ, float power, float radius) {
+    if (!tile || !tile->isFullCube()) return;
+
+    Tesselator& t = Tesselator::getInstance();
+
+    // Get collision box for bounds (most tiles are 0-1 range)
+    AABB box = tile->getCollisionBox(tileX, tileY, tileZ);
+
+    // Calculate shadow opacity based on distance from entity center
+    double verticalDist = entityY - box.y1;
+    if (verticalDist < 0.0) return;  // Block is above entity, skip
+
+    // Smoother fade over distance - shadow fades linearly over shadowDropDistance (2 blocks)
+    // At distance 0: full shadow, at distance 2: no shadow
+    float distanceFade = 1.0f - static_cast<float>(verticalDist / 2.0);
+    if (distanceFade <= 0.0f) return;
+
+    // Check brightness at space above the block (tileY + 1) where the shadow is cast
+    float brightness = level->getBrightness(tileX, tileY + 1, tileZ);
+    float alpha = power * distanceFade * 0.5f * brightness;
+
+    if (alpha < 0.0f) return;
+    if (alpha > 1.0f) alpha = 1.0f;
+
+    // Get block bounds from collision box
+    double x0 = box.x0;
+    double x1 = box.x1;
+    double y0 = box.y1 + 0.015625;  // Slight offset to prevent z-fighting
+    double z0 = box.z0;
+    double z1 = box.z1;
+
+    // Calculate UV coordinates based on entity position and shadow radius
+    float u0 = static_cast<float>((entityX - x0) / 2.0 / radius + 0.5);
+    float u1 = static_cast<float>((entityX - x1) / 2.0 / radius + 0.5);
+    float v0 = static_cast<float>((entityZ - z0) / 2.0 / radius + 0.5);
+    float v1 = static_cast<float>((entityZ - z1) / 2.0 / radius + 0.5);
+
+    // Render shadow quad on top of block
+    t.color(1.0f, 1.0f, 1.0f, alpha);
+    t.tex(u0, v0); t.vertex(static_cast<float>(x0), static_cast<float>(y0), static_cast<float>(z0));
+    t.tex(u0, v1); t.vertex(static_cast<float>(x0), static_cast<float>(y0), static_cast<float>(z1));
+    t.tex(u1, v1); t.vertex(static_cast<float>(x1), static_cast<float>(y0), static_cast<float>(z1));
+    t.tex(u1, v0); t.vertex(static_cast<float>(x1), static_cast<float>(y0), static_cast<float>(z0));
 }
 
 } // namespace mc

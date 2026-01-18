@@ -604,6 +604,13 @@ void Minecraft::onKeyPress(int key, int scancode, int action, int mods) {
                 }
                 break;
 
+            case GLFW_KEY_Q:
+                // Drop item (matching Java - Q key)
+                if (player && mouseHandler.isGrabbed()) {
+                    player->drop();
+                }
+                break;
+
             // Number keys 1-9 for hotbar slot selection (matching Java)
             case GLFW_KEY_1: if (player && player->inventory) { player->selectedSlot = 0; player->inventory->selected = 0; } break;
             case GLFW_KEY_2: if (player && player->inventory) { player->selectedSlot = 1; player->inventory->selected = 1; } break;

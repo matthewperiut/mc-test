@@ -67,6 +67,11 @@ public:
     virtual bool destroyBlock(int x, int y, int z);
     virtual bool placeBlock(int x, int y, int z, int face, int blockId);
 
+    // Drop item from selected hotbar slot (Q key)
+    void drop();
+    // Drop specific item stack with optional death throw mode
+    void drop(int itemId, int count, int damage, bool deathThrow = false);
+
     // State
     void setRunning(bool running);
     void setSneaking(bool sneaking);

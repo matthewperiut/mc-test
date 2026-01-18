@@ -12,6 +12,10 @@ Chicken::Chicken(Level* level)
     setSize(0.3f, 0.4f);
     health = 4;
     eggTime = static_cast<int>(random() % 6000) + 6000;
+
+    // Shadow properties (matching Java ChickenRenderer)
+    shadowRadius = 0.3f;
+    shadowStrength = 1.0f;
 }
 
 void Chicken::aiStep() {
