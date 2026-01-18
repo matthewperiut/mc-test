@@ -116,10 +116,11 @@ bool Minecraft::init(int width, int height, bool fs) {
         return false;
     }
 
-    // Create window - Metal needs GLFW_NO_API, OpenGL needs context hints
+    // Create window - Metal needs GLFW_NO_API, OpenGL requests highest available
 #ifdef MC_RENDERER_METAL
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 #else
+    // Request 3.3 core to test if rendering works with 3.3
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
@@ -213,8 +214,6 @@ bool Minecraft::init(int width, int height, bool fs) {
     std::cout << "Minecraft C++ initialized successfully!" << std::endl;
 #ifdef MC_RENDERER_METAL
     std::cout << "Using Metal rendering backend" << std::endl;
-#else
-    std::cout << "OpenGL Version: " << glGetString(GL_VERSION) << std::endl;
 #endif
 
     return true;

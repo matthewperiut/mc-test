@@ -1,4 +1,6 @@
 #include "GLShaderPipeline.hpp"
+#include "GLRenderDevice.hpp"
+#include "renderer/backend/RenderDevice.hpp"
 #include "renderer/GLSLTranspiler.hpp"
 #include <fstream>
 #include <sstream>
@@ -33,15 +35,34 @@ bool GLShaderPipeline::loadFromGLSL(const std::string& vertexPath, const std::st
         return false;
     }
 
-    // Transpile GLSL 450 to 330 for macOS OpenGL compatibility
-    std::string transpiledVertex = GLSLTranspiler::transpile450to330(vertexSource);
-    std::string transpiledFragment = GLSLTranspiler::transpile450to330(fragmentSource);
+    // Check if we need to transpile based on OpenGL version
+    GLRenderDevice* glDevice = dynamic_cast<GLRenderDevice*>(&RenderDevice::get());
+    bool needsFullTranspile = !glDevice || !glDevice->supportsGLSL450();
+
+    std::string transpiledVertex = vertexSource;
+    std::string transpiledFragment = fragmentSource;
+
+    if (needsFullTranspile) {
+        // Transpile GLSL 450 to 330 for older OpenGL compatibility
+        transpiledVertex = GLSLTranspiler::transpile450to330(vertexSource);
+        transpiledFragment = GLSLTranspiler::transpile450to330(fragmentSource);
+    } else {
+        // Even on OGL 4.5+, we need to extract uniform blocks to individual uniforms
+        // because the C++ code uses glGetUniformLocation() which doesn't work with block members
+        transpiledVertex = GLSLTranspiler::extractUniformBlocks(vertexSource);
+        transpiledFragment = GLSLTranspiler::extractUniformBlocks(fragmentSource);
+    }
+
 
     GLuint vertexShader = compileShader(GL_VERTEX_SHADER, transpiledVertex);
-    if (!vertexShader) return false;
+    if (!vertexShader) {
+        std::cerr << "  Vertex shader compilation failed! - " << vertexPath << std::endl;
+        return false;
+    }
 
     GLuint fragmentShader = compileShader(GL_FRAGMENT_SHADER, transpiledFragment);
     if (!fragmentShader) {
+        std::cerr << "  Fragment shader compilation failed! - " << fragmentPath << std::endl;
         glDeleteShader(vertexShader);
         return false;
     }
@@ -56,9 +77,10 @@ bool GLShaderPipeline::loadFromGLSL(const std::string& vertexPath, const std::st
     if (!success) {
         char infoLog[512];
         glGetProgramInfoLog(program, 512, nullptr, infoLog);
-        std::cerr << "Shader program linking failed:\n" << infoLog << std::endl;
+        std::cerr << "  Shader program linking failed:\n" << infoLog << std::endl;
         glDeleteProgram(program);
         program = 0;
+        return false;
     }
 
     glDeleteShader(vertexShader);

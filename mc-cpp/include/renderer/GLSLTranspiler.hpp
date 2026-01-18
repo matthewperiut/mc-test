@@ -12,15 +12,16 @@ public:
     // Convert GLSL 450 source to GLSL 330
     static std::string transpile450to330(const std::string& source);
 
+    // Extract uniforms from uniform blocks to individual uniforms
+    // (useful for C++ API compatibility even on OGL 4.5+)
+    static std::string extractUniformBlocks(const std::string& source);
+
 private:
     // Remove layout(location = N) from all in/out declarations
     static std::string removeLayoutLocations(const std::string& source);
 
     // Remove layout(location = N) only from fragment outputs
     static std::string removeFragmentOutputLocations(const std::string& source);
-
-    // Extract uniforms from uniform blocks to individual uniforms
-    static std::string extractUniformBlocks(const std::string& source);
 
     // Remove layout(binding = N) from samplers
     static std::string removeSamplerBindings(const std::string& source);

@@ -59,12 +59,20 @@ public:
     // Vertex attributes
     void setupVertexAttributes() override;
 
+    // Version querying
+    int getMajorVersion() const { return glVersionMajor; }
+    int getMinorVersion() const { return glVersionMinor; }
+    bool supportsGLSL450() const { return (glVersionMajor > 4) || (glVersionMajor == 4 && glVersionMinor >= 5); }
+
 private:
     static GLenum toGLPrimitive(PrimitiveType prim);
     static GLenum toGLCompareFunc(CompareFunc func);
     static GLenum toGLBlendFactor(BlendFactor factor);
+    void detectGLVersion();
 
     bool initialized;
+    int glVersionMajor = 0;
+    int glVersionMinor = 0;
 };
 
 } // namespace mc

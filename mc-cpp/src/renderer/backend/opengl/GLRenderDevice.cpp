@@ -4,6 +4,7 @@
 #include "GLTexture.hpp"
 #include "renderer/backend/RenderTypes.hpp"
 #include <iostream>
+#include <cstdio>
 
 namespace mc {
 
@@ -28,6 +29,9 @@ bool GLRenderDevice::init(void* windowHandle) {
     if (glewErr == GLEW_ERROR_NO_GLX_DISPLAY) {
         std::cerr << "GLEW warning: No GLX display (Wayland?), but context may be valid" << std::endl;
     }
+
+    // Detect OpenGL version
+    detectGLVersion();
 
     initialized = true;
     return true;
@@ -220,6 +224,33 @@ GLenum GLRenderDevice::toGLBlendFactor(BlendFactor factor) {
         case BlendFactor::OneMinusSrcColor: return GL_ONE_MINUS_SRC_COLOR;
     }
     return GL_ONE;
+}
+
+void GLRenderDevice::detectGLVersion() {
+    const char* versionStr = reinterpret_cast<const char*>(glGetString(GL_VERSION));
+    if (!versionStr) {
+        std::cerr << "Failed to query OpenGL version" << std::endl;
+        glVersionMajor = 3;
+        glVersionMinor = 3;
+        return;
+    }
+
+    // Parse version string: "X.Y ..." or "X.Y.Z ..."
+    int major = 0, minor = 0;
+    if (sscanf(versionStr, "%d.%d", &major, &minor) == 2) {
+        glVersionMajor = major;
+        glVersionMinor = minor;
+    } else {
+        glVersionMajor = 3;
+        glVersionMinor = 3;
+    }
+
+    std::cout << "OpenGL Version: " << glVersionMajor << "." << glVersionMinor << std::endl;
+    if (supportsGLSL450()) {
+        std::cout << "Using GLSL 450 shaders (native support)" << std::endl;
+    } else {
+        std::cout << "Using GLSL 330 shaders (transpiled from 450)" << std::endl;
+    }
 }
 
 // Factory function for OpenGL backend
