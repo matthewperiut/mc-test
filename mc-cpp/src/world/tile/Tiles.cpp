@@ -558,8 +558,44 @@ void initAllTiles() {
     Tile::shouldTick[Tile::GRAVEL] = true;
 }
 
+// Initialize light property arrays based on tile properties
+void initLightArrays() {
+    // Default: all blocks fully opaque, no emission
+    for (int i = 0; i < 256; i++) {
+        Tile::lightBlock[i] = 255;  // Fully opaque by default
+        Tile::lightEmission[i] = 0;
+    }
+
+    // Air is fully transparent
+    Tile::lightBlock[Tile::AIR] = 0;
+
+    // Set properties for each tile based on its properties
+    for (int i = 0; i < 256; i++) {
+        Tile* tile = Tile::tiles[i].get();
+        if (tile) {
+            // Get light emission from tile
+            Tile::lightEmission[i] = static_cast<uint8_t>(tile->getLightEmission());
+
+            // Get light blocking from tile
+            Tile::lightBlock[i] = static_cast<uint8_t>(tile->getLightBlock());
+        }
+    }
+
+    // Special cases for partial transparency (matching Java values)
+    // Water: reduces light by 3 per block
+    Tile::lightBlock[Tile::WATER] = 3;
+    Tile::lightBlock[Tile::STILL_WATER] = 3;
+
+    // Leaves: reduce light by 1
+    Tile::lightBlock[Tile::LEAVES] = 1;
+
+    // Ice: partially transparent
+    Tile::lightBlock[Tile::ICE] = 3;
+}
+
 void Tile::initTiles() {
     initAllTiles();
+    initLightArrays();
 }
 
 } // namespace mc

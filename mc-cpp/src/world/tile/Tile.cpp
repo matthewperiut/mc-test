@@ -5,6 +5,8 @@ namespace mc {
 
 std::unique_ptr<Tile> Tile::tiles[256];
 bool Tile::shouldTick[256] = {false};
+uint8_t Tile::lightBlock[256] = {0};
+uint8_t Tile::lightEmission[256] = {0};
 
 Tile::Tile(int id, int textureIndex)
     : id(id)

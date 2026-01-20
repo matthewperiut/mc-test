@@ -28,9 +28,13 @@ Level::Level(int width, int height, int depth, long long seed)
     size_t totalBlocks = static_cast<size_t>(width) * height * depth;
     blocks.resize(totalBlocks, 0);
     data.resize(totalBlocks, 0);
-    skyLight.resize(totalBlocks, 15);  // Full sky light
+    skyLight.resize(totalBlocks, 0);   // Initialize to 0, will be calculated properly
     blockLight.resize(totalBlocks, 0);
     heightMap.resize(static_cast<size_t>(width) * depth, 0);
+
+    // Initialize lighting engine
+    lightingEngine = std::make_unique<LightingEngine>();
+    lightingEngine->setLevel(this);
 
     Mth::setSeed(static_cast<uint64_t>(seed));
 }
@@ -65,14 +69,15 @@ bool Level::setTile(int x, int y, int z, int tileId) {
 
     blocks[index] = static_cast<uint8_t>(tileId);
 
-    // Update height map
+    // Update height map first (needed for sky light calculations)
     updateHeightMap(x, z);
 
-    // Notify listeners
-    notifyBlockChanged(x, y, z);
-
-    // Update lighting
+    // Update lighting BEFORE notifying listeners
+    // This ensures chunks rebuild with correct light values, preventing flash-to-black
     updateLightAt(x, y, z);
+
+    // Now notify listeners (chunk will rebuild with updated light)
+    notifyBlockChanged(x, y, z);
 
     // Notify neighboring blocks of the change (matching Java Level.updateNeighborsAt)
     notifyNeighborsAt(x, y, z, tileId);
@@ -88,8 +93,8 @@ bool Level::setTileWithData(int x, int y, int z, int tileId, int metadata) {
     data[index] = static_cast<uint8_t>(metadata);
 
     updateHeightMap(x, z);
+    updateLightAt(x, y, z);  // Update light before notifying
     notifyBlockChanged(x, y, z);
-    updateLightAt(x, y, z);
 
     return true;
 }
@@ -357,12 +362,18 @@ float Level::getBrightnessForChunk(int x, int y, int z) const {
     return brightnessRamp[light];
 }
 
-void Level::updateLightAt(int /*x*/, int /*y*/, int /*z*/) {
-    // Simplified - would propagate light changes
+void Level::updateLightAt(int x, int y, int z) {
+    // Queue light update at this position for both sky and block light
+    if (lightingEngine) {
+        lightingEngine->queueUpdateAt(x, y, z);
+    }
 }
 
 void Level::updateLights() {
-    // Batch light updates
+    // Process pending light updates
+    if (lightingEngine) {
+        lightingEngine->processUpdates(500);  // Process up to 500 updates per tick
+    }
 }
 
 int Level::getHeightAt(int x, int z) const {
@@ -371,16 +382,24 @@ int Level::getHeightAt(int x, int z) const {
 }
 
 void Level::updateHeightMap(int x, int z) {
+    // Matching Java LevelChunk.recalcHeight() logic
     if (x < 0 || x >= width || z < 0 || z >= depth) return;
 
-    int maxY = 0;
-    for (int y = height - 1; y >= 0; y--) {
-        if (!isAir(x, y, z)) {
-            maxY = y + 1;
+    // Find new heightmap value: highest block with non-zero lightBlock
+    int newHeight = 0;
+    for (int y = height - 1; y > 0; y--) {
+        int tileId = getTile(x, y, z);
+        int blockValue = (tileId > 0 && tileId < 256) ? Tile::lightBlock[tileId] : 0;
+        if (blockValue != 0) {
+            newHeight = y + 1;
             break;
         }
     }
-    heightMap[z * width + x] = maxY;
+
+    heightMap[z * width + x] = newHeight;
+
+    // Don't modify light values here - let the BFS propagation in updateLightAt handle it
+    // This prevents the "flash to black" issue where we set light to 0 before calculating the correct value
 }
 
 void Level::addEntity(std::unique_ptr<Entity> entity) {
@@ -466,9 +485,10 @@ bool Level::mayPlace(int tileId, int x, int y, int z, bool ignoreBoundingBox) co
 }
 
 void Level::tick() {
-    worldTime++;
+    worldTime+=50;
     tickEntities();
     tickTiles();
+    updateLights();  // Process queued light updates
 }
 
 void Level::tickEntities() {
@@ -515,6 +535,12 @@ void Level::notifyBlockChanged(int x, int y, int z) {
     }
 }
 
+void Level::notifyLightChanged(int x, int y, int z) {
+    for (auto* listener : listeners) {
+        listener->lightChanged(x, y, z);
+    }
+}
+
 void Level::notifyNeighborsAt(int x, int y, int z, int tileId) {
     // Matching Java Level.updateNeighborsAt - notify all 6 adjacent blocks
     // This is called when a block changes, so neighbors can react (e.g., torch falls)
@@ -550,24 +576,40 @@ void Level::generateFlatWorld() {
     // Simple flat world generation
     int groundLevel = 64;
 
+    // Temporarily disable lighting updates during generation
+    auto tempEngine = std::move(lightingEngine);
+
     for (int x = 0; x < width; x++) {
         for (int z = 0; z < depth; z++) {
             // Bedrock
-            setTile(x, 0, z, Tile::BEDROCK);
+            int index = getIndex(x, 0, z);
+            blocks[index] = Tile::BEDROCK;
 
             // Stone
             for (int y = 1; y < groundLevel - 4; y++) {
-                setTile(x, y, z, Tile::STONE);
+                index = getIndex(x, y, z);
+                blocks[index] = Tile::STONE;
             }
 
             // Dirt
             for (int y = groundLevel - 4; y < groundLevel; y++) {
-                setTile(x, y, z, Tile::DIRT);
+                index = getIndex(x, y, z);
+                blocks[index] = Tile::DIRT;
             }
 
             // Grass
-            setTile(x, groundLevel, z, Tile::GRASS);
+            index = getIndex(x, groundLevel, z);
+            blocks[index] = Tile::GRASS;
+
+            // Update height map
+            heightMap[z * width + x] = groundLevel + 1;
         }
+    }
+
+    // Restore lighting engine and initialize lighting
+    lightingEngine = std::move(tempEngine);
+    if (lightingEngine) {
+        lightingEngine->initializeLighting();
     }
 
     // Update spawn point
@@ -581,22 +623,16 @@ void Level::generateTerrain() {
 }
 
 void Level::initializeLight() {
-    // Initialize sky light from top down
-    for (int x = 0; x < width; x++) {
-        for (int z = 0; z < depth; z++) {
-            propagateSkyLight(x, z);
-        }
+    // Use lighting engine for proper initialization
+    if (lightingEngine) {
+        lightingEngine->initializeLighting();
     }
 }
 
 void Level::propagateSkyLight(int x, int z) {
-    int light = 15;
-    for (int y = height - 1; y >= 0; y--) {
-        Tile* tile = getTileAt(x, y, z);
-        if (tile && tile->blocksLight) {
-            light = 0;
-        }
-        skyLight[getIndex(x, y, z)] = static_cast<uint8_t>(light);
+    // Legacy method - now handled by LightingEngine
+    if (lightingEngine) {
+        lightingEngine->calculateSkyLightColumn(x, z);
     }
 }
 

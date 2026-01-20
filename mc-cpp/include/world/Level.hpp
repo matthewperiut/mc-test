@@ -4,6 +4,7 @@
 #include "phys/Vec3.hpp"
 #include "phys/HitResult.hpp"
 #include "pathfinder/Path.hpp"
+#include "world/LightingEngine.hpp"
 #include <vector>
 #include <memory>
 #include <functional>
@@ -62,6 +63,9 @@ public:
     bool raining;
     bool thundering;
     float rainLevel;
+
+    // Lighting engine (Java-style lighting system)
+    std::unique_ptr<LightingEngine> lightingEngine;
 
     Level(int width, int height, int depth, long long seed = 0);
     ~Level();
@@ -126,6 +130,7 @@ public:
     void addListener(LevelListener* listener);
     void removeListener(LevelListener* listener);
     void notifyBlockChanged(int x, int y, int z);
+    void notifyLightChanged(int x, int y, int z);
 
     // Block updates (matching Java Level.updateNeighborsAt)
     void notifyNeighborsAt(int x, int y, int z, int tileId);

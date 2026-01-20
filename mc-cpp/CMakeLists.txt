@@ -252,6 +252,7 @@ set(WORLD_SOURCES
         src/world/LevelChunk.cpp
         src/world/ChunkCache.cpp
         src/world/Dimension.cpp
+        src/world/LightingEngine.cpp
         src/world/tile/Tile.cpp
         src/world/tile/Tiles.cpp
         src/world/levelgen/PerlinNoise.cpp

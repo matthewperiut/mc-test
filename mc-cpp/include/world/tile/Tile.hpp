@@ -35,6 +35,10 @@ public:
     static std::unique_ptr<Tile> tiles[256];
     static bool shouldTick[256];
 
+    // Light properties (matching Java Tile static arrays)
+    static uint8_t lightBlock[256];      // How much light is blocked (0=transparent, 255=fully opaque)
+    static uint8_t lightEmission[256];   // How much light is emitted (0-15)
+
     // Tile IDs (constants matching original)
     static const int AIR = 0;
     static const int STONE = 1;
