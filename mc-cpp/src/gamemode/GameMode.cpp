@@ -280,7 +280,7 @@ void SurvivalMode::render(float partialTick) {
 }
 
 float SurvivalMode::getPickRange() const {
-    return 4.0f;  // Survival reach is 4 blocks
+    return 5.0f;  // Survival reach is 5 blocks
 }
 
 // =============================================================================
