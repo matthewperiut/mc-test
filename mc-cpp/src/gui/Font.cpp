@@ -174,6 +174,11 @@ void Font::draw(const std::string& text, int x, int y, int color) {
 void Font::draw(const std::string& text, int x, int y, int color, bool darken) {
     if (!initialized || text.empty()) return;
 
+    // Ensure proper shader state for standalone draws
+    ShaderManager::getInstance().useGuiShader();
+    ShaderManager::getInstance().setUseTexture(true);
+    ShaderManager::getInstance().updateMatrices();
+
     bindTexture();
     Tesselator& t = Tesselator::getInstance();
     t.begin(DrawMode::Quads);
@@ -183,6 +188,11 @@ void Font::draw(const std::string& text, int x, int y, int color, bool darken) {
 
 void Font::drawShadow(const std::string& text, int x, int y, int color) {
     if (!initialized || text.empty()) return;
+
+    // Ensure proper shader state for standalone draws
+    ShaderManager::getInstance().useGuiShader();
+    ShaderManager::getInstance().setUseTexture(true);
+    ShaderManager::getInstance().updateMatrices();
 
     bindTexture();
     Tesselator& t = Tesselator::getInstance();
