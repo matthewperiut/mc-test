@@ -265,11 +265,16 @@ void GameRenderer::renderWorld(float partialTick) {
     // Re-bind terrain texture after sky rendering
     Textures::getInstance().bind("resources/terrain.png");
     ShaderManager::getInstance().useWorldShader();
+    ShaderManager::getInstance().setAlphaTest(0.5f);  // Reset alpha test (sky sets it to 0)
     ShaderManager::getInstance().updateMatrices();
     ShaderManager::getInstance().setSkyBrightness(skyBrightness);  // Re-set after shader switch
 
-    // Render opaque geometry
+    // Render opaque geometry (pass 0)
     levelRenderer->render(partialTick, 0);
+
+    // Render cutout geometry (pass 1) - torches, flowers, etc. with alpha testing
+    // Note: cross-shaped plants render both front and back faces in TileRenderer
+    levelRenderer->render(partialTick, 1);
 
     // Render selection outline
     if (hitResult.isTile()) {
@@ -284,11 +289,11 @@ void GameRenderer::renderWorld(float partialTick) {
         }
     }
 
-    // Render transparent geometry (water)
+    // Render transparent geometry - water (pass 2)
     ShaderManager::getInstance().setAlphaTest(0.0f);
     ShaderManager::getInstance().setSkyBrightness(skyBrightness);  // Ensure sky brightness is set
     device.setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
-    levelRenderer->render(partialTick, 1);
+    levelRenderer->render(partialTick, 2);
     device.setBlend(false);
 
     // Render dropped items and entities

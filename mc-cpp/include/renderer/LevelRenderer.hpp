@@ -102,7 +102,7 @@ private:
     float getStarBrightness(float timeOfDay) const;
 
     // Entity rendering helpers
-    void renderDroppedItemSprite(int icon, int copies, float playerYRot, unsigned int randomSeed);
+    void renderDroppedItemSprite(int icon, int copies, float playerYRot, unsigned int randomSeed, int skyLight, int blockLight);
 
     // Shadow rendering
     void renderEntityShadow(Entity* entity, double x, double y, double z, float power, float partialTick);

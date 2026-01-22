@@ -31,6 +31,8 @@ public:
     // Render the model
     void render(Tesselator& t, float scale);
     void render(Tesselator& t, float scale, float r, float g, float b, float a);
+    void render(Tesselator& t, float scale, int skyLight, int blockLight);
+    void render(Tesselator& t, float scale, float r, float g, float b, float a, int skyLight, int blockLight);
 };
 
 } // namespace mc

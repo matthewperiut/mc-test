@@ -40,6 +40,7 @@ public:
     // Render this model part
     void render(Tesselator& t, float scale);
     void render(Tesselator& t, float scale, float r, float g, float b, float a);
+    void render(Tesselator& t, float scale, float r, float g, float b, float a, int skyLight, int blockLight);
 
 private:
     // Texture coordinates (in 64x32 texture)

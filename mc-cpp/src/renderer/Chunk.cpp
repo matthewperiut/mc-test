@@ -12,11 +12,12 @@ Chunk::Chunk(Level* level, int x0, int y0, int z0)
     : x0(x0), y0(y0), z0(z0)
     , x1(x0 + SIZE), y1(y0 + SIZE), z1(z0 + SIZE)
     , dirty(true), loaded(false), visible(false)
-    , solidVertexCount(0), waterVertexCount(0)
-    , solidIndexCount(0), waterIndexCount(0)
+    , solidVertexCount(0), cutoutVertexCount(0), waterVertexCount(0)
+    , solidIndexCount(0), cutoutIndexCount(0), waterIndexCount(0)
     , distanceSq(0.0f)
     , level(level)
     , solidVBO(nullptr), solidEBO(nullptr)
+    , cutoutVBO(nullptr), cutoutEBO(nullptr)
     , waterVBO(nullptr), waterEBO(nullptr)
     , vaoInitialized(false)
 {
@@ -30,6 +31,8 @@ Chunk::~Chunk() {
 void Chunk::dispose() {
     solidVBO.reset();
     solidEBO.reset();
+    cutoutVBO.reset();
+    cutoutEBO.reset();
     waterVBO.reset();
     waterEBO.reset();
     vaoInitialized = false;
@@ -68,12 +71,15 @@ void Chunk::rebuild(TileRenderer& renderer) {
         auto& device = RenderDevice::get();
         solidVBO = device.createVertexBuffer();
         solidEBO = device.createIndexBuffer();
+        cutoutVBO = device.createVertexBuffer();
+        cutoutEBO = device.createIndexBuffer();
         waterVBO = device.createVertexBuffer();
         waterEBO = device.createIndexBuffer();
         vaoInitialized = true;
     }
 
     rebuildSolid(renderer);
+    rebuildCutout(renderer);
     rebuildWater(renderer);
     dirty = false;
     loaded = true;
@@ -97,6 +103,9 @@ void Chunk::rebuildSolid(TileRenderer& renderer) {
                 // Skip water/lava for solid pass
                 if (tile->renderShape == TileShape::LIQUID) continue;
 
+                // Skip cutout tiles (torches, flowers, etc.) for solid pass
+                if (tile->renderLayer == TileLayer::CUTOUT) continue;
+
                 renderer.renderTile(tile, x, y, z);
             }
         }
@@ -110,6 +119,40 @@ void Chunk::rebuildSolid(TileRenderer& renderer) {
 
     if (solidIndexCount > 0) {
         uploadData(solidVBO.get(), solidEBO.get(), data);
+    }
+}
+
+void Chunk::rebuildCutout(TileRenderer& renderer) {
+    Tesselator& t = Tesselator::getInstance();
+    t.begin(DrawMode::Quads);
+
+    cutoutVertexCount = 0;
+
+    for (int x = x0; x < x1; x++) {
+        for (int y = y0; y < y1; y++) {
+            for (int z = z0; z < z1; z++) {
+                int tileId = level->getTile(x, y, z);
+                if (tileId <= 0) continue;
+
+                Tile* tile = Tile::tiles[tileId].get();
+                if (!tile) continue;
+
+                // Only render cutout tiles (torches, flowers, etc.) in this pass
+                if (tile->renderLayer != TileLayer::CUTOUT) continue;
+
+                renderer.renderTile(tile, x, y, z);
+            }
+        }
+    }
+
+    cutoutVertexCount = t.getVertexCount();
+
+    // Get vertex data without drawing
+    Tesselator::VertexData data = t.getVertexData();
+    cutoutIndexCount = static_cast<int>(data.indices.size());
+
+    if (cutoutIndexCount > 0) {
+        uploadData(cutoutVBO.get(), cutoutEBO.get(), data);
     }
 }
 
@@ -161,8 +204,17 @@ void Chunk::render(int pass) {
             device.drawIndexed(PrimitiveType::Triangles, solidIndexCount);
             solidVBO->unbind();
         }
+    } else if (pass == 1) {
+        // Cutout pass (alpha-tested: torches, flowers, etc.)
+        if (cutoutIndexCount > 0 && cutoutVBO && cutoutEBO) {
+            cutoutVBO->bind();
+            cutoutEBO->bind();
+            device.setupVertexAttributes();
+            device.drawIndexed(PrimitiveType::Triangles, cutoutIndexCount);
+            cutoutVBO->unbind();
+        }
     } else {
-        // Water pass
+        // Water pass (pass == 2)
         if (waterIndexCount > 0 && waterVBO && waterEBO) {
             waterVBO->bind();
             waterEBO->bind();

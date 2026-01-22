@@ -853,6 +853,13 @@ void LevelRenderer::renderEntities(float partialTick) {
         // Height offset to prevent clipping into ground (Java: heightOffset = bbHeight / 2.0 = 0.125)
         float heightOffset = 0.125f;
 
+        // Get light level at entity position for proper world lighting
+        int lightBlockX = static_cast<int>(std::floor(ix));
+        int lightBlockY = static_cast<int>(std::floor(iy));
+        int lightBlockZ = static_cast<int>(std::floor(iz));
+        int entitySkyLight = level->getSkyLight(lightBlockX, lightBlockY, lightBlockZ);
+        int entityBlockLight = level->getBlockLight(lightBlockX, lightBlockY, lightBlockZ);
+
         MatrixStack::modelview().push();
         MatrixStack::modelview().translate(static_cast<float>(ix), static_cast<float>(iy + bob + heightOffset), static_cast<float>(iz));
 
@@ -881,6 +888,7 @@ void LevelRenderer::renderEntities(float partialTick) {
                         ShaderManager::getInstance().updateMatrices();
                     }
                     t.begin(DrawMode::Quads);
+                    t.lightLevel(entitySkyLight, entityBlockLight);
                     tileRenderer.renderBlockItem(tile, 1.0f);
                     t.end();
                     MatrixStack::modelview().pop();
@@ -889,14 +897,14 @@ void LevelRenderer::renderEntities(float partialTick) {
                 Textures::getInstance().bind("resources/terrain.png");
                 int icon = tile ? tile->getTexture(0) : 0;
                 ShaderManager::getInstance().updateMatrices();
-                renderDroppedItemSprite(icon, copies, player->yRot, randomSeed);
+                renderDroppedItemSprite(icon, copies, player->yRot, randomSeed, entitySkyLight, entityBlockLight);
             }
         } else if (item->itemId >= 256) {
             Textures::getInstance().bind("resources/gui/items.png");
             Item* itemDef = Item::byId(item->itemId);
             int icon = itemDef ? itemDef->getIcon() : 0;
             ShaderManager::getInstance().updateMatrices();
-            renderDroppedItemSprite(icon, copies, player->yRot, randomSeed);
+            renderDroppedItemSprite(icon, copies, player->yRot, randomSeed, entitySkyLight, entityBlockLight);
         }
 
         MatrixStack::modelview().pop();
@@ -935,6 +943,13 @@ void LevelRenderer::renderEntities(float partialTick) {
         float flapSpd = chicken->oFlapSpeed + (chicken->flapSpeed - chicken->oFlapSpeed) * partialTick;
         float bob = (Mth::sin(flapPos) + 1.0f) * flapSpd;
 
+        // Get light level at entity position for proper world lighting
+        int chickenBlockX = static_cast<int>(std::floor(cx));
+        int chickenBlockY = static_cast<int>(std::floor(cy));
+        int chickenBlockZ = static_cast<int>(std::floor(cz));
+        int chickenSkyLight = level->getSkyLight(chickenBlockX, chickenBlockY, chickenBlockZ);
+        int chickenBlockLight = level->getBlockLight(chickenBlockX, chickenBlockY, chickenBlockZ);
+
         // Bind chicken texture (no mipmaps to avoid edge artifacts)
         Textures::getInstance().bind("resources/mob/chicken.png", 0, false);
 
@@ -967,7 +982,7 @@ void LevelRenderer::renderEntities(float partialTick) {
         // Disable backface culling for mob rendering (matching Java)
         device.setCullFace(false);
 
-        chickenModel.render(t, scale);
+        chickenModel.render(t, scale, chickenSkyLight, chickenBlockLight);
 
         // Red flash overlay when hurt or dying (matching Java MobRenderer lines 64-80)
         if (chicken->hurtTime > 0 || chicken->deathTime > 0) {
@@ -982,7 +997,7 @@ void LevelRenderer::renderEntities(float partialTick) {
             device.setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
             device.setDepthFunc(CompareFunc::Equal);
 
-            chickenModel.render(t, scale, br, 0.0f, 0.0f, 0.4f);
+            chickenModel.render(t, scale, br, 0.0f, 0.0f, 0.4f, chickenSkyLight, chickenBlockLight);
 
             // Restore state
             device.setDepthFunc(CompareFunc::LessEqual);
@@ -996,7 +1011,7 @@ void LevelRenderer::renderEntities(float partialTick) {
     device.setBlend(false);
 }
 
-void LevelRenderer::renderDroppedItemSprite(int icon, int copies, float playerYRot, unsigned int randomSeed) {
+void LevelRenderer::renderDroppedItemSprite(int icon, int copies, float playerYRot, unsigned int randomSeed, int skyLight, int blockLight) {
     float u0 = static_cast<float>(icon % 16 * 16) / 256.0f;
     float u1 = (static_cast<float>(icon % 16 * 16) + 16.0f) / 256.0f;
     float v0 = static_cast<float>(icon / 16 * 16) / 256.0f;
@@ -1024,6 +1039,7 @@ void LevelRenderer::renderDroppedItemSprite(int icon, int copies, float playerYR
         ShaderManager::getInstance().updateMatrices();
 
         t.begin(DrawMode::Quads);
+        t.lightLevel(skyLight, blockLight);
         t.color(1.0f, 1.0f, 1.0f, 1.0f);
         t.normal(0.0f, 1.0f, 0.0f);
         t.tex(u0, v1); t.vertex(0.0f - xo, 0.0f - yo, 0.0f);

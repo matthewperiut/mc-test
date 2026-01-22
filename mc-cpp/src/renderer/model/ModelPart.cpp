@@ -188,4 +188,56 @@ void ModelPart::render(Tesselator& t, float scale, float r, float g, float b, fl
     }
 }
 
+void ModelPart::render(Tesselator& t, float scale, float r, float g, float b, float a, int skyLight, int blockLight) {
+    if (!visible || quads.empty()) return;
+
+    bool hasRotation = (xRot != 0.0f || yRot != 0.0f || zRot != 0.0f);
+    bool hasTranslation = (x != 0.0f || y != 0.0f || z != 0.0f);
+
+    if (hasRotation || hasTranslation) {
+        MatrixStack::modelview().push();
+    }
+
+    if (hasTranslation) {
+        MatrixStack::modelview().translate(x * scale, y * scale, z * scale);
+    }
+
+    if (hasRotation) {
+        constexpr float RAD_TO_DEG = 180.0f / 3.14159265358979f;
+        if (zRot != 0.0f) {
+            MatrixStack::modelview().rotate(zRot * RAD_TO_DEG, 0.0f, 0.0f, 1.0f);
+        }
+        if (yRot != 0.0f) {
+            MatrixStack::modelview().rotate(yRot * RAD_TO_DEG, 0.0f, 1.0f, 0.0f);
+        }
+        if (xRot != 0.0f) {
+            MatrixStack::modelview().rotate(xRot * RAD_TO_DEG, 1.0f, 0.0f, 0.0f);
+        }
+    }
+
+    if (hasRotation || hasTranslation) {
+        ShaderManager::getInstance().updateMatrices();
+    }
+
+    // Render all quads - each face as a separate quad
+    for (const auto& quad : quads) {
+        t.begin(DrawMode::Quads);
+        t.lightLevel(skyLight, blockLight);
+        t.color(r, g, b, a);
+
+        for (int i = 0; i < 4; ++i) {
+            const auto& v = quad.vertices[i];
+            t.tex(v.u, v.v);
+            t.vertex(v.x * scale, v.y * scale, v.z * scale);
+        }
+
+        t.end();
+    }
+
+    if (hasRotation || hasTranslation) {
+        MatrixStack::modelview().pop();
+        ShaderManager::getInstance().updateMatrices();
+    }
+}
+
 } // namespace mc

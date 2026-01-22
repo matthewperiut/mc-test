@@ -11,6 +11,13 @@ namespace mc {
 class Level;
 class TileRenderer;
 
+// Tile render layers (determines which pass the block is rendered in)
+enum class TileLayer {
+    SOLID = 0,       // Fully opaque blocks (stone, dirt, etc.)
+    CUTOUT = 1,      // Alpha-tested blocks (torches, flowers, etc.)
+    TRANSLUCENT = 2  // Alpha-blended blocks (water, ice, etc.)
+};
+
 // Tile render shapes
 enum class TileShape {
     CUBE = 0,
@@ -123,6 +130,7 @@ public:
     int id;
     int textureIndex;
     TileShape renderShape;
+    TileLayer renderLayer;  // Which render pass this block belongs to
     bool blocksLight;
     bool transparent;
     bool solid;
@@ -145,6 +153,7 @@ public:
     Tile& setLightOpacity(bool blocks);
     Tile& setTransparent(bool transparent);
     Tile& setShape(TileShape shape);
+    Tile& setLayer(TileLayer layer);
     Tile& setStepSound(const std::string& sound, float volume, float pitch);
     Tile& setName(const std::string& name);
 

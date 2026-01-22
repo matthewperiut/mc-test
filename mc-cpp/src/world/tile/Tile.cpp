@@ -12,6 +12,7 @@ Tile::Tile(int id, int textureIndex)
     : id(id)
     , textureIndex(textureIndex)
     , renderShape(TileShape::CUBE)
+    , renderLayer(TileLayer::SOLID)
     , blocksLight(true)
     , transparent(false)
     , solid(true)
@@ -56,6 +57,11 @@ Tile& Tile::setShape(TileShape shape) {
     if (shape != TileShape::CUBE) {
         solid = false;
     }
+    return *this;
+}
+
+Tile& Tile::setLayer(TileLayer layer) {
+    renderLayer = layer;
     return *this;
 }
 

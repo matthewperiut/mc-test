@@ -148,6 +148,7 @@ public:
     TorchTile() : Tile(TORCH, 80) {
         setHardness(0.0f);
         setShape(TileShape::TORCH);
+        setLayer(TileLayer::CUTOUT);
         setLightOpacity(false);
         setTransparent(true);
         solid = false;
@@ -234,7 +235,7 @@ public:
         // Floor torch box (metadata 5 or default)
         float w = 0.1f;
         return AABB(x + 0.5f - w, y, z + 0.5f - w,
-                    x + 0.5f + w, y + 0.6f, z + 0.5f + w);
+                    x + 0.5f + w, y + 0.625f, z + 0.5f + w);
     }
 
     // Metadata-aware selection box (matching Java TorchTile.clip)
@@ -262,7 +263,7 @@ public:
             // Floor (data == 5 or default)
             w = 0.1f;
             return AABB(x + 0.5f - w, y, z + 0.5f - w,
-                        x + 0.5f + w, y + 0.6f, z + 0.5f + w);
+                        x + 0.5f + w, y + 0.625f, z + 0.5f + w);
         }
     }
 };
@@ -403,6 +404,7 @@ public:
     SaplingTile() : Tile(SAPLING, 15) {
         setHardness(0.0f);
         setShape(TileShape::CROSS);
+        setLayer(TileLayer::CUTOUT);
         setTransparent(true);
         setLightOpacity(false);
         solid = false;
@@ -420,6 +422,7 @@ public:
     FlowerTile() : Tile(FLOWER, 13) {
         setHardness(0.0f);
         setShape(TileShape::CROSS);
+        setLayer(TileLayer::CUTOUT);
         setTransparent(true);
         setLightOpacity(false);
         solid = false;
@@ -437,6 +440,7 @@ public:
     RoseTile() : Tile(ROSE, 12) {
         setHardness(0.0f);
         setShape(TileShape::CROSS);
+        setLayer(TileLayer::CUTOUT);
         setTransparent(true);
         setLightOpacity(false);
         solid = false;

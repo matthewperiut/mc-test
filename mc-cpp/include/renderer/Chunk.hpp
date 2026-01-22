@@ -30,8 +30,10 @@ public:
 
     // Stats
     int solidVertexCount;
+    int cutoutVertexCount;
     int waterVertexCount;
     int solidIndexCount;
+    int cutoutIndexCount;
     int waterIndexCount;
 
     // Distance for sorting
@@ -45,6 +47,7 @@ public:
     // Rebuild the chunk mesh
     void rebuild(TileRenderer& renderer);
     void rebuildSolid(TileRenderer& renderer);
+    void rebuildCutout(TileRenderer& renderer);
     void rebuildWater(TileRenderer& renderer);
 
     // Render the chunk
@@ -69,6 +72,10 @@ private:
     // RenderDevice buffers for solid geometry
     std::unique_ptr<VertexBuffer> solidVBO;
     std::unique_ptr<IndexBuffer> solidEBO;
+
+    // RenderDevice buffers for cutout geometry (torches, flowers, etc.)
+    std::unique_ptr<VertexBuffer> cutoutVBO;
+    std::unique_ptr<IndexBuffer> cutoutEBO;
 
     // RenderDevice buffers for water geometry
     std::unique_ptr<VertexBuffer> waterVBO;

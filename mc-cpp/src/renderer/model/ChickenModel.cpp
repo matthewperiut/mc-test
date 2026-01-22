@@ -95,4 +95,19 @@ void ChickenModel::render(Tesselator& t, float scale, float r, float g, float b,
     wing1.render(t, scale, r, g, b, a);
 }
 
+void ChickenModel::render(Tesselator& t, float scale, int skyLight, int blockLight) {
+    render(t, scale, 1.0f, 1.0f, 1.0f, 1.0f, skyLight, blockLight);
+}
+
+void ChickenModel::render(Tesselator& t, float scale, float r, float g, float b, float a, int skyLight, int blockLight) {
+    head.render(t, scale, r, g, b, a, skyLight, blockLight);
+    beak.render(t, scale, r, g, b, a, skyLight, blockLight);
+    redThing.render(t, scale, r, g, b, a, skyLight, blockLight);
+    body.render(t, scale, r, g, b, a, skyLight, blockLight);
+    leg0.render(t, scale, r, g, b, a, skyLight, blockLight);
+    leg1.render(t, scale, r, g, b, a, skyLight, blockLight);
+    wing0.render(t, scale, r, g, b, a, skyLight, blockLight);
+    wing1.render(t, scale, r, g, b, a, skyLight, blockLight);
+}
+
 } // namespace mc
