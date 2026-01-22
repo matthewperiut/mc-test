@@ -332,4 +332,47 @@ Tesselator::VertexData Tesselator::getVertexData() {
     return data;
 }
 
+// TesselatorPool implementation
+
+TesselatorPool& TesselatorPool::getInstance() {
+    static TesselatorPool instance;
+    return instance;
+}
+
+TesselatorPool::~TesselatorPool() {
+    destroy();
+}
+
+void TesselatorPool::initialize(int count) {
+    std::lock_guard<std::mutex> lock(poolMutex);
+    for (int i = 0; i < count; ++i) {
+        auto t = std::make_unique<Tesselator>();
+        available.push_back(t.get());
+        allTesselators.push_back(std::move(t));
+    }
+}
+
+void TesselatorPool::destroy() {
+    std::lock_guard<std::mutex> lock(poolMutex);
+    available.clear();
+    allTesselators.clear();
+}
+
+Tesselator* TesselatorPool::acquire() {
+    std::unique_lock<std::mutex> lock(poolMutex);
+    availableCondition.wait(lock, [this] { return !available.empty(); });
+    Tesselator* t = available.back();
+    available.pop_back();
+    return t;
+}
+
+void TesselatorPool::release(Tesselator* t) {
+    if (!t) return;
+    {
+        std::lock_guard<std::mutex> lock(poolMutex);
+        available.push_back(t);
+    }
+    availableCondition.notify_one();
+}
+
 } // namespace mc

@@ -38,6 +38,12 @@ bool GLRenderDevice::init(void* windowHandle) {
 }
 
 void GLRenderDevice::shutdown() {
+    if (vaoCreated) {
+        glDeleteVertexArrays(1, &cachedVAO);
+        cachedVAO = 0;
+        vaoCreated = false;
+    }
+    lastBoundVBO = 0;
     initialized = false;
 }
 
@@ -159,31 +165,55 @@ void GLRenderDevice::drawIndexed(PrimitiveType primitive, size_t indexCount, siz
                    reinterpret_cast<void*>(startIndex * sizeof(uint32_t)));
 }
 
+void GLRenderDevice::createCachedVAO() {
+    if (vaoCreated) return;
+
+    glGenVertexArrays(1, &cachedVAO);
+    glBindVertexArray(cachedVAO);
+    vaoCreated = true;
+}
+
 void GLRenderDevice::setupVertexAttributes() {
-    // Position: 3 floats at offset 0
-    glEnableVertexAttribArray(VertexFormat::ATTRIB_POSITION);
-    glVertexAttribPointer(VertexFormat::ATTRIB_POSITION, 3, GL_FLOAT, GL_FALSE,
-                         VertexFormat::STRIDE, reinterpret_cast<void*>(0));
+    // Ensure VAO is created and bound
+    if (!vaoCreated) {
+        createCachedVAO();
+    } else {
+        glBindVertexArray(cachedVAO);
+    }
 
-    // TexCoord: 2 floats at offset 12
-    glEnableVertexAttribArray(VertexFormat::ATTRIB_TEXCOORD);
-    glVertexAttribPointer(VertexFormat::ATTRIB_TEXCOORD, 2, GL_FLOAT, GL_FALSE,
-                         VertexFormat::STRIDE, reinterpret_cast<void*>(12));
+    // Get currently bound VBO
+    GLint currentVBO = 0;
+    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &currentVBO);
 
-    // Color: 4 bytes (normalized) at offset 20
-    glEnableVertexAttribArray(VertexFormat::ATTRIB_COLOR);
-    glVertexAttribPointer(VertexFormat::ATTRIB_COLOR, 4, GL_UNSIGNED_BYTE, GL_TRUE,
-                         VertexFormat::STRIDE, reinterpret_cast<void*>(20));
+    // Only reconfigure attributes if VBO changed
+    if (static_cast<GLuint>(currentVBO) != lastBoundVBO) {
+        lastBoundVBO = static_cast<GLuint>(currentVBO);
 
-    // Normal: 3 signed bytes (normalized) at offset 24
-    glEnableVertexAttribArray(VertexFormat::ATTRIB_NORMAL);
-    glVertexAttribPointer(VertexFormat::ATTRIB_NORMAL, 3, GL_BYTE, GL_TRUE,
-                         VertexFormat::STRIDE, reinterpret_cast<void*>(24));
+        // Position: 3 floats at offset 0
+        glEnableVertexAttribArray(VertexFormat::ATTRIB_POSITION);
+        glVertexAttribPointer(VertexFormat::ATTRIB_POSITION, 3, GL_FLOAT, GL_FALSE,
+                             VertexFormat::STRIDE, reinterpret_cast<void*>(0));
 
-    // Light: 2 bytes at offset 28
-    glEnableVertexAttribArray(VertexFormat::ATTRIB_LIGHT);
-    glVertexAttribPointer(VertexFormat::ATTRIB_LIGHT, 2, GL_UNSIGNED_BYTE, GL_FALSE,
-                         VertexFormat::STRIDE, reinterpret_cast<void*>(28));
+        // TexCoord: 2 floats at offset 12
+        glEnableVertexAttribArray(VertexFormat::ATTRIB_TEXCOORD);
+        glVertexAttribPointer(VertexFormat::ATTRIB_TEXCOORD, 2, GL_FLOAT, GL_FALSE,
+                             VertexFormat::STRIDE, reinterpret_cast<void*>(12));
+
+        // Color: 4 bytes (normalized) at offset 20
+        glEnableVertexAttribArray(VertexFormat::ATTRIB_COLOR);
+        glVertexAttribPointer(VertexFormat::ATTRIB_COLOR, 4, GL_UNSIGNED_BYTE, GL_TRUE,
+                             VertexFormat::STRIDE, reinterpret_cast<void*>(20));
+
+        // Normal: 3 signed bytes (normalized) at offset 24
+        glEnableVertexAttribArray(VertexFormat::ATTRIB_NORMAL);
+        glVertexAttribPointer(VertexFormat::ATTRIB_NORMAL, 3, GL_BYTE, GL_TRUE,
+                             VertexFormat::STRIDE, reinterpret_cast<void*>(24));
+
+        // Light: 2 bytes at offset 28
+        glEnableVertexAttribArray(VertexFormat::ATTRIB_LIGHT);
+        glVertexAttribPointer(VertexFormat::ATTRIB_LIGHT, 2, GL_UNSIGNED_BYTE, GL_FALSE,
+                             VertexFormat::STRIDE, reinterpret_cast<void*>(28));
+    }
 }
 
 GLenum GLRenderDevice::toGLPrimitive(PrimitiveType prim) {

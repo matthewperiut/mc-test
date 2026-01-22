@@ -238,6 +238,8 @@ set(RENDERER_SOURCES
         src/renderer/Tesselator.cpp
         src/renderer/Textures.cpp
         src/renderer/Chunk.cpp
+        src/renderer/ChunkMeshBuilder.cpp
+        src/renderer/ChunkSnapshot.cpp
         src/renderer/TileRenderer.cpp
         src/renderer/LevelRenderer.cpp
         src/renderer/GameRenderer.cpp

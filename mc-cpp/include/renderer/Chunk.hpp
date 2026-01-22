@@ -3,6 +3,8 @@
 #include "phys/AABB.hpp"
 #include "renderer/Tesselator.hpp"
 #include <memory>
+#include <mutex>
+#include <atomic>
 
 namespace mc {
 
@@ -10,6 +12,7 @@ class Level;
 class TileRenderer;
 class VertexBuffer;
 class IndexBuffer;
+struct ChunkMeshData;
 
 class Chunk {
 public:
@@ -65,9 +68,22 @@ public:
     // Delete resources
     void dispose();
 
+    // Async mesh building support
+    void setPendingMesh(std::unique_ptr<ChunkMeshData> mesh);
+    bool hasPendingMesh() const;      // True if mesh is ready to upload
+    bool isBuilding() const;          // True if async build is in progress
+    void setBuilding(bool building);  // Mark as being built asynchronously
+    bool uploadPendingMesh();         // Upload to GPU, returns true if uploaded
+
 private:
     void uploadData(VertexBuffer* vbo, IndexBuffer* ebo,
                     const Tesselator::VertexData& data);
+
+    // Pending mesh from async builder
+    std::unique_ptr<ChunkMeshData> pendingMesh;
+    mutable std::mutex meshMutex;
+    std::atomic<bool> buildingAsync{false};   // True while queued/building
+    std::atomic<bool> dirtyWhileBuilding{false};  // True if modified during async build
 
     // RenderDevice buffers for solid geometry
     std::unique_ptr<VertexBuffer> solidVBO;

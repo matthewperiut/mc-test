@@ -15,6 +15,7 @@ namespace mc {
 class Minecraft;
 class Entity;
 class Tile;
+class ChunkMeshBuilder;
 
 class LevelRenderer : public LevelListener {
 public:
@@ -111,6 +112,9 @@ private:
 
     // Star vertex data for rendering via Tesselator
     std::vector<float> starVertices;
+
+    // Multithreaded chunk mesh builder
+    std::unique_ptr<ChunkMeshBuilder> meshBuilder;
 
     // Legacy VAO handles (kept for initialization, not used)
     uint32_t starVAO, starVBO, starEBO;

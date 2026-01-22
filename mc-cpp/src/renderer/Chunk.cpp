@@ -1,6 +1,7 @@
 #include "renderer/Chunk.hpp"
 #include "renderer/TileRenderer.hpp"
 #include "renderer/Tesselator.hpp"
+#include "renderer/ChunkMeshBuilder.hpp"
 #include "renderer/backend/RenderDevice.hpp"
 #include "renderer/backend/VertexBuffer.hpp"
 #include "world/Level.hpp"
@@ -40,6 +41,10 @@ void Chunk::dispose() {
 
 void Chunk::setDirty() {
     dirty = true;
+    // If we're currently building, remember that we need another rebuild
+    if (buildingAsync.load()) {
+        dirtyWhileBuilding.store(true);
+    }
 }
 
 bool Chunk::contains(int x, int y, int z) const {
@@ -199,8 +204,9 @@ void Chunk::render(int pass) {
         // Solid pass
         if (solidIndexCount > 0 && solidVBO && solidEBO) {
             solidVBO->bind();
-            solidEBO->bind();
             device.setupVertexAttributes();
+            // Bind EBO AFTER VAO (setupVertexAttributes binds VAO which restores old EBO)
+            solidEBO->bind();
             device.drawIndexed(PrimitiveType::Triangles, solidIndexCount);
             solidVBO->unbind();
         }
@@ -208,8 +214,8 @@ void Chunk::render(int pass) {
         // Cutout pass (alpha-tested: torches, flowers, etc.)
         if (cutoutIndexCount > 0 && cutoutVBO && cutoutEBO) {
             cutoutVBO->bind();
-            cutoutEBO->bind();
             device.setupVertexAttributes();
+            cutoutEBO->bind();
             device.drawIndexed(PrimitiveType::Triangles, cutoutIndexCount);
             cutoutVBO->unbind();
         }
@@ -217,12 +223,83 @@ void Chunk::render(int pass) {
         // Water pass (pass == 2)
         if (waterIndexCount > 0 && waterVBO && waterEBO) {
             waterVBO->bind();
-            waterEBO->bind();
             device.setupVertexAttributes();
+            waterEBO->bind();
             device.drawIndexed(PrimitiveType::Triangles, waterIndexCount);
             waterVBO->unbind();
         }
     }
+}
+
+void Chunk::setPendingMesh(std::unique_ptr<ChunkMeshData> mesh) {
+    std::lock_guard<std::mutex> lock(meshMutex);
+    pendingMesh = std::move(mesh);
+}
+
+bool Chunk::hasPendingMesh() const {
+    std::lock_guard<std::mutex> lock(meshMutex);
+    return pendingMesh && pendingMesh->ready.load();
+}
+
+bool Chunk::isBuilding() const {
+    return buildingAsync.load();
+}
+
+void Chunk::setBuilding(bool building) {
+    buildingAsync.store(building);
+}
+
+bool Chunk::uploadPendingMesh() {
+    std::unique_ptr<ChunkMeshData> mesh;
+    {
+        std::lock_guard<std::mutex> lock(meshMutex);
+        if (!pendingMesh || !pendingMesh->ready.load()) {
+            return false;
+        }
+        mesh = std::move(pendingMesh);
+    }
+
+    // Create buffers if needed
+    if (!vaoInitialized) {
+        auto& device = RenderDevice::get();
+        solidVBO = device.createVertexBuffer();
+        solidEBO = device.createIndexBuffer();
+        cutoutVBO = device.createVertexBuffer();
+        cutoutEBO = device.createIndexBuffer();
+        waterVBO = device.createVertexBuffer();
+        waterEBO = device.createIndexBuffer();
+        vaoInitialized = true;
+    }
+
+    // Upload solid mesh
+    solidVertexCount = mesh->solid.vertexCount;
+    solidIndexCount = static_cast<int>(mesh->solid.indices.size());
+    if (solidIndexCount > 0) {
+        uploadData(solidVBO.get(), solidEBO.get(), mesh->solid);
+    }
+
+    // Upload cutout mesh
+    cutoutVertexCount = mesh->cutout.vertexCount;
+    cutoutIndexCount = static_cast<int>(mesh->cutout.indices.size());
+    if (cutoutIndexCount > 0) {
+        uploadData(cutoutVBO.get(), cutoutEBO.get(), mesh->cutout);
+    }
+
+    // Upload water mesh
+    waterVertexCount = mesh->water.vertexCount;
+    waterIndexCount = static_cast<int>(mesh->water.indices.size());
+    if (waterIndexCount > 0) {
+        uploadData(waterVBO.get(), waterEBO.get(), mesh->water);
+    }
+
+    // Only mark as not dirty if chunk wasn't modified during the build
+    if (!dirtyWhileBuilding.load()) {
+        dirty = false;
+    }
+    dirtyWhileBuilding.store(false);
+    loaded = true;
+    buildingAsync.store(false);
+    return true;
 }
 
 } // namespace mc

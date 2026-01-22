@@ -1,4 +1,5 @@
 #include "renderer/LevelRenderer.hpp"
+#include "renderer/ChunkMeshBuilder.hpp"
 #include "core/Minecraft.hpp"
 #include "renderer/Tesselator.hpp"
 #include "renderer/Textures.hpp"
@@ -29,6 +30,7 @@ LevelRenderer::LevelRenderer(Minecraft* minecraft, Level* level)
     , firstRebuild(true)
     , destroyProgress(0.0f)
     , destroyX(-1), destroyY(-1), destroyZ(-1)
+    , meshBuilder(std::make_unique<ChunkMeshBuilder>())
     , starVAO(0), starVBO(0), starEBO(0)
     , skyVAO(0), skyVBO(0), skyEBO(0)
     , darkVAO(0), darkVBO(0), darkEBO(0)
@@ -220,29 +222,58 @@ void LevelRenderer::sortChunks() {
 void LevelRenderer::updateDirtyChunks() {
     chunksUpdated = 0;
 
-    // Rebuild more chunks on initial load, fewer during gameplay
-    int maxUpdates = firstRebuild ? 256 : 8;
-
-    int toUpdate = std::min(static_cast<int>(dirtyChunks.size()), maxUpdates);
-    for (int i = 0; i < toUpdate; i++) {
-        Chunk* chunk = dirtyChunks[i];
-        chunk->rebuild(tileRenderer);
-        chunksUpdated++;
+    // Process completed chunks from async builder (GPU upload on main thread)
+    auto completed = meshBuilder->getCompletedChunks();
+    for (Chunk* chunk : completed) {
+        if (chunk->uploadPendingMesh()) {
+            chunksUpdated++;
+        }
     }
 
-    if (firstRebuild && dirtyChunks.size() <= static_cast<size_t>(maxUpdates)) {
-        firstRebuild = false;
+    // Queue dirty chunks for async rebuilding (up to a limit)
+    int maxQueue = firstRebuild ? 256 : 16;
+    int queued = 0;
+
+    for (Chunk* chunk : dirtyChunks) {
+        if (queued >= maxQueue) break;
+        // Only queue if not already being built asynchronously
+        if (!chunk->isBuilding()) {
+            chunk->setBuilding(true);
+            // Queue chunk with distance-based priority (closer = higher priority)
+            meshBuilder->queueChunk(chunk, level, static_cast<int>(chunk->distanceSq));
+            queued++;
+        }
+    }
+
+    // Update firstRebuild flag when initial load completes
+    if (firstRebuild) {
+        size_t pendingCount = meshBuilder->getPendingCount();
+        if (dirtyChunks.empty() && pendingCount == 0 && completed.empty()) {
+            firstRebuild = false;
+        }
     }
 }
 
 void LevelRenderer::render(float /*partialTick*/, int pass) {
     chunksRendered = 0;
 
-    // Render all visible chunks
-    for (Chunk* chunk : visibleChunks) {
-        if (chunk->loaded) {
-            chunk->render(pass);
-            if (pass == 0) chunksRendered++;
+    // Pass 0 (solid): iterate front-to-back to maximize early-Z rejection
+    // Pass 1 (water/transparent): iterate back-to-front for correct alpha blending
+    if (pass == 0) {
+        // visibleChunks is sorted back-to-front, so iterate in reverse for front-to-back
+        for (auto it = visibleChunks.rbegin(); it != visibleChunks.rend(); ++it) {
+            Chunk* chunk = *it;
+            if (chunk->loaded) {
+                chunk->render(pass);
+                chunksRendered++;
+            }
+        }
+    } else {
+        // Back-to-front for transparent pass
+        for (Chunk* chunk : visibleChunks) {
+            if (chunk->loaded) {
+                chunk->render(pass);
+            }
         }
     }
 }

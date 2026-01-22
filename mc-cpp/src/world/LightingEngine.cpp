@@ -55,7 +55,7 @@ bool LightUpdate::expandToContain(int nx0, int ny0, int nz0, int nx1, int ny1, i
 // LightingEngine methods
 LightingEngine::LightingEngine()
     : level(nullptr)
-    , multithreaded(false)
+    , multithreaded(true)
     , running(false)
     , recurseCount(0)
 {
@@ -101,7 +101,7 @@ void LightingEngine::workerFunction() {
             std::unique_lock<std::mutex> lock(queueMutex);
             if (!updateQueue.empty()) {
                 update = updateQueue.front();
-                updateQueue.erase(updateQueue.begin());
+                updateQueue.pop_front();
                 hasWork = true;
             }
         }
@@ -154,7 +154,7 @@ void LightingEngine::queueUpdate(LightLayer layer, int x0, int y0, int z0, int x
 
     // Limit queue size
     if (updateQueue.size() > 1000000) {
-        updateQueue.erase(updateQueue.begin());
+        updateQueue.pop_front();
     }
 
     if (multithreaded) {
@@ -411,7 +411,7 @@ void LightingEngine::processUpdates(int maxUpdates) {
             std::lock_guard<std::mutex> lock(queueMutex);
             if (updateQueue.empty()) break;
             update = updateQueue.front();
-            updateQueue.erase(updateQueue.begin());
+            updateQueue.pop_front();
         }
 
         if (recurseCount < MAX_RECURSE) {

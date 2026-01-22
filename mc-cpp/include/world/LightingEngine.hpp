@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include <deque>
 #include <queue>
 #include <mutex>
 #include <atomic>
@@ -76,7 +77,7 @@ private:
     Level* level;
 
     // Light update queue
-    std::vector<LightUpdate> updateQueue;
+    std::deque<LightUpdate> updateQueue;
     mutable std::mutex queueMutex;
 
     // Multithreading

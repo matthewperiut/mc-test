@@ -69,10 +69,16 @@ private:
     static GLenum toGLCompareFunc(CompareFunc func);
     static GLenum toGLBlendFactor(BlendFactor factor);
     void detectGLVersion();
+    void createCachedVAO();
 
     bool initialized;
     int glVersionMajor = 0;
     int glVersionMinor = 0;
+
+    // VAO caching - one VAO per vertex format
+    GLuint cachedVAO = 0;
+    bool vaoCreated = false;
+    GLuint lastBoundVBO = 0;  // Track last bound VBO to avoid redundant attribute setup
 };
 
 } // namespace mc

@@ -6,6 +6,7 @@
 #include <Metal/Metal.hpp>
 #include <QuartzCore/QuartzCore.hpp>
 #include <GLFW/glfw3.h>
+#include <dispatch/dispatch.h>
 
 // GLFW native access for macOS
 #define GLFW_EXPOSE_NATIVE_COCOA
@@ -44,7 +45,11 @@ MTLRenderDevice::MTLRenderDevice()
     , currentPipeline(nullptr)
     , currentVertexBuffer(nullptr)
     , currentIndexBuffer(nullptr)
+    , frameSemaphore(nullptr)
+    , currentFrameIndex(0)
 {
+    // Create semaphore for triple buffering (allow MAX_FRAMES_IN_FLIGHT frames to be in flight)
+    frameSemaphore = dispatch_semaphore_create(MAX_FRAMES_IN_FLIGHT);
 }
 
 MTLRenderDevice::~MTLRenderDevice() {
@@ -96,6 +101,19 @@ bool MTLRenderDevice::init(void* glfwWindow) {
 }
 
 void MTLRenderDevice::shutdown() {
+    // Wait for all in-flight frames to complete before shutting down
+    if (frameSemaphore) {
+        for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+            dispatch_semaphore_wait(static_cast<dispatch_semaphore_t>(frameSemaphore), DISPATCH_TIME_FOREVER);
+        }
+        // Signal them back so the semaphore can be released cleanly
+        for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+            dispatch_semaphore_signal(static_cast<dispatch_semaphore_t>(frameSemaphore));
+        }
+        // Note: dispatch_semaphore_t is ARC-managed on modern macOS, no explicit release needed
+        frameSemaphore = nullptr;
+    }
+
     if (depthTexture) {
         depthTexture->release();
         depthTexture = nullptr;
@@ -184,6 +202,10 @@ void MTLRenderDevice::handleResize(int width, int height) {
 }
 
 void MTLRenderDevice::beginFrame() {
+    // Wait for a free frame slot (triple buffering)
+    dispatch_semaphore_wait(static_cast<dispatch_semaphore_t>(frameSemaphore), DISPATCH_TIME_FOREVER);
+    currentFrameIndex = (currentFrameIndex + 1) % MAX_FRAMES_IN_FLIGHT;
+
     // Get next drawable from Metal layer
     CA::MetalLayer* layer = reinterpret_cast<CA::MetalLayer*>(metalLayer);
     CA::MetalDrawable* drawable = layer->nextDrawable();
@@ -268,9 +290,15 @@ void MTLRenderDevice::present() {
     if (commandBuffer && currentDrawable) {
         CA::MetalDrawable* drawable = reinterpret_cast<CA::MetalDrawable*>(currentDrawable);
         commandBuffer->presentDrawable(drawable);
+
+        // Add completion handler to signal semaphore when GPU finishes
+        // This enables triple buffering - CPU can work on next frames while GPU processes
+        dispatch_semaphore_t sem = static_cast<dispatch_semaphore_t>(frameSemaphore);
+        commandBuffer->addCompletedHandler([sem](MTL::CommandBuffer*) {
+            dispatch_semaphore_signal(sem);
+        });
+
         commandBuffer->commit();
-        // Wait for GPU to finish to ensure proper cleanup
-        commandBuffer->waitUntilCompleted();
         // Note: commandBuffer is autoreleased (returned from commandQueue->commandBuffer()),
         // so we don't call release() - the autorelease pool handles it
         commandBuffer = nullptr;

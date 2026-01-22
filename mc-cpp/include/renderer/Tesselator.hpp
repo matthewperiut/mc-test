@@ -3,12 +3,15 @@
 #include <cstdint>
 #include <vector>
 #include <memory>
+#include <mutex>
+#include <condition_variable>
 #include "renderer/backend/RenderTypes.hpp"
 
 namespace mc {
 
 class VertexBuffer;
 class IndexBuffer;
+class Tesselator;
 
 /**
  * Tesselator - Modern vertex buffer system using the RenderDevice abstraction.
@@ -70,11 +73,13 @@ public:
     };
     VertexData getVertexData();
 
-private:
+    // Public constructor for pool usage (singleton still available via getInstance)
     Tesselator();
     ~Tesselator();
     Tesselator(const Tesselator&) = delete;
     Tesselator& operator=(const Tesselator&) = delete;
+
+private:
 
     void draw();
     void buildQuadIndices();
@@ -109,6 +114,38 @@ private:
     bool tesselating;
 
     DrawMode mode;
+};
+
+/**
+ * TesselatorPool - Manages a pool of Tesselators for multi-threaded chunk building.
+ * Each worker thread acquires a Tesselator, uses it for mesh generation, then releases it.
+ */
+class TesselatorPool {
+public:
+    static TesselatorPool& getInstance();
+
+    // Acquire a tesselator for the current thread (blocks if none available)
+    Tesselator* acquire();
+
+    // Release a tesselator back to the pool
+    void release(Tesselator* t);
+
+    // Pre-create tesselators (call from main thread during init)
+    void initialize(int count);
+
+    // Cleanup
+    void destroy();
+
+private:
+    TesselatorPool() = default;
+    ~TesselatorPool();
+    TesselatorPool(const TesselatorPool&) = delete;
+    TesselatorPool& operator=(const TesselatorPool&) = delete;
+
+    std::mutex poolMutex;
+    std::vector<std::unique_ptr<Tesselator>> allTesselators;
+    std::vector<Tesselator*> available;
+    std::condition_variable availableCondition;
 };
 
 } // namespace mc

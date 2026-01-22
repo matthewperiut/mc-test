@@ -144,6 +144,11 @@ private:
     MTLShaderPipeline* currentPipeline;
     MTLVertexBuffer* currentVertexBuffer;
     MTLIndexBuffer* currentIndexBuffer;
+
+    // Triple buffering
+    static constexpr int MAX_FRAMES_IN_FLIGHT = 3;
+    void* frameSemaphore;  // dispatch_semaphore_t
+    int currentFrameIndex;
 };
 
 } // namespace mc
