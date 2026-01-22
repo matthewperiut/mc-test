@@ -1,6 +1,7 @@
 #include "entity/PathfinderMob.hpp"
 #include "world/Level.hpp"
 #include "pathfinder/PathFinder.hpp"
+#include "pathfinder/AsyncPathFinder.hpp"
 #include "util/Mth.hpp"
 #include <cmath>
 
@@ -11,19 +12,42 @@ PathfinderMob::PathfinderMob(Level* level)
 {
 }
 
+void PathfinderMob::pollAsyncPaths() {
+    if (!level || !level->getAsyncPathFinder()) return;
+
+    auto results = level->getAsyncPathFinder()->getCompletedPaths();
+    for (auto& result : results) {
+        if (result.entityId == entityId && result.requestId == pendingPathRequestId) {
+            path = std::move(result.path);
+            waitingForPath = false;
+            pendingPathRequestId = -1;
+        }
+    }
+}
+
 void PathfinderMob::updateAi() {
+    // Check for completed async paths
+    pollAsyncPaths();
+
     holdGround = false;
     float searchRange = 16.0f;
 
     // Look for attack target
     if (attackTarget == nullptr) {
         attackTarget = findAttackTarget();
-        if (attackTarget != nullptr && level) {
-            PathFinder finder(level);
-            path = finder.findPath(this, attackTarget, searchRange);
+        if (attackTarget != nullptr && level && level->getAsyncPathFinder() && !waitingForPath) {
+            // Queue async path request
+            pendingPathRequestId = level->getAsyncPathFinder()->queueRequest(
+                this, attackTarget->x, attackTarget->bb.y0, attackTarget->z, searchRange, level);
+            waitingForPath = true;
         }
     } else if (!attackTarget->isAlive()) {
         attackTarget = nullptr;
+        // Cancel any pending path request
+        if (level && level->getAsyncPathFinder()) {
+            level->getAsyncPathFinder()->cancelRequests(entityId);
+        }
+        waitingForPath = false;
     } else {
         float dist = static_cast<float>(distanceTo(*attackTarget));
         if (canSee(*attackTarget)) {
@@ -33,7 +57,7 @@ void PathfinderMob::updateAi() {
 
     // Random wandering when no target or holding ground
     if (holdGround || attackTarget == nullptr || (path != nullptr && static_cast<int>(random() % 20) != 0)) {
-        if ((path == nullptr && static_cast<int>(random() % 80) == 0) || static_cast<int>(random() % 80) == 0) {
+        if ((path == nullptr && !waitingForPath && static_cast<int>(random() % 80) == 0) || static_cast<int>(random() % 80) == 0) {
             bool foundTarget = false;
             int bestX = -1, bestY = -1, bestZ = -1;
             float bestValue = -99999.0f;
@@ -52,14 +76,18 @@ void PathfinderMob::updateAi() {
                 }
             }
 
-            if (foundTarget && level) {
-                PathFinder finder(level);
-                path = finder.findPath(this, bestX, bestY, bestZ, 10.0f);
+            if (foundTarget && level && level->getAsyncPathFinder() && !waitingForPath) {
+                // Queue async path request
+                pendingPathRequestId = level->getAsyncPathFinder()->queueRequest(
+                    this, bestX + 0.5, bestY + 0.5, bestZ + 0.5, 10.0f, level);
+                waitingForPath = true;
             }
         }
-    } else if (level) {
-        PathFinder finder(level);
-        path = finder.findPath(this, attackTarget, searchRange);
+    } else if (level && level->getAsyncPathFinder() && !waitingForPath) {
+        // Queue async path request to target
+        pendingPathRequestId = level->getAsyncPathFinder()->queueRequest(
+            this, attackTarget->x, attackTarget->bb.y0, attackTarget->z, searchRange, level);
+        waitingForPath = true;
     }
 
     // Follow path

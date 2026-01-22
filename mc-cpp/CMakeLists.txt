@@ -218,6 +218,7 @@ endif()
 # =============================================================================
 set(UTIL_SOURCES
         src/util/Mth.cpp
+        src/util/SpatialHash.cpp
 )
 
 set(PHYS_SOURCES
@@ -275,6 +276,7 @@ set(ENTITY_SOURCES
 set(PATHFINDER_SOURCES
         src/pathfinder/Path.cpp
         src/pathfinder/PathFinder.cpp
+        src/pathfinder/AsyncPathFinder.cpp
 )
 
 set(MODEL_SOURCES

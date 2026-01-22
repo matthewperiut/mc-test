@@ -36,6 +36,9 @@ Level::Level(int width, int height, int depth, long long seed)
     lightingEngine = std::make_unique<LightingEngine>();
     lightingEngine->setLevel(this);
 
+    // Initialize async pathfinder (2 worker threads)
+    asyncPathFinder = std::make_unique<AsyncPathFinder>(2);
+
     Mth::setSeed(static_cast<uint64_t>(seed));
 }
 
@@ -69,8 +72,19 @@ bool Level::setTile(int x, int y, int z, int tileId) {
 
     blocks[index] = static_cast<uint8_t>(tileId);
 
-    // Update height map first (needed for sky light calculations)
-    updateHeightMap(x, z);
+    // Smart heightmap update: O(1) for most cases, O(height) only when removing highest block
+    int oldHeight = heightMap[z * width + x];
+    bool oldBlocksLight = (oldTile > 0 && oldTile < 256) ? Tile::lightBlock[oldTile] != 0 : false;
+    bool newBlocksLight = (tileId > 0 && tileId < 256) ? Tile::lightBlock[tileId] != 0 : false;
+
+    if (newBlocksLight && y + 1 > oldHeight) {
+        // Placed a light-blocking block above current height - O(1) update
+        heightMap[z * width + x] = y + 1;
+    } else if (oldBlocksLight && !newBlocksLight && y + 1 == oldHeight) {
+        // Removed the highest light-blocking block - need full scan
+        updateHeightMap(x, z);
+    }
+    // Otherwise, height map doesn't change (block is below highest or non-light-blocking)
 
     // Update lighting BEFORE notifying listeners
     // This ensures chunks rebuild with correct light values, preventing flash-to-black
@@ -89,10 +103,23 @@ bool Level::setTileWithData(int x, int y, int z, int tileId, int metadata) {
     if (!isInBounds(x, y, z)) return false;
 
     int index = getIndex(x, y, z);
+    int oldTile = blocks[index];
     blocks[index] = static_cast<uint8_t>(tileId);
     data[index] = static_cast<uint8_t>(metadata);
 
-    updateHeightMap(x, z);
+    // Smart heightmap update: O(1) for most cases, O(height) only when removing highest block
+    int oldHeight = heightMap[z * width + x];
+    bool oldBlocksLight = (oldTile > 0 && oldTile < 256) ? Tile::lightBlock[oldTile] != 0 : false;
+    bool newBlocksLight = (tileId > 0 && tileId < 256) ? Tile::lightBlock[tileId] != 0 : false;
+
+    if (newBlocksLight && y + 1 > oldHeight) {
+        // Placed a light-blocking block above current height - O(1) update
+        heightMap[z * width + x] = y + 1;
+    } else if (oldBlocksLight && !newBlocksLight && y + 1 == oldHeight) {
+        // Removed the highest light-blocking block - need full scan
+        updateHeightMap(x, z);
+    }
+
     updateLightAt(x, y, z);  // Update light before notifying
     notifyBlockChanged(x, y, z);
 
@@ -132,6 +159,21 @@ Tile* Level::getTileAt(int x, int y, int z) const {
 }
 
 std::vector<AABB> Level::getCollisionBoxes(Entity* /*entity*/, const AABB& area) const {
+    // Check collision cache first
+    constexpr double EPSILON = 0.0001;
+    for (const auto& entry : collisionCache) {
+        if (entry.frameId == collisionCacheFrameId &&
+            std::abs(entry.queryArea.x0 - area.x0) < EPSILON &&
+            std::abs(entry.queryArea.y0 - area.y0) < EPSILON &&
+            std::abs(entry.queryArea.z0 - area.z0) < EPSILON &&
+            std::abs(entry.queryArea.x1 - area.x1) < EPSILON &&
+            std::abs(entry.queryArea.y1 - area.y1) < EPSILON &&
+            std::abs(entry.queryArea.z1 - area.z1) < EPSILON) {
+            return entry.boxes;
+        }
+    }
+
+    // Cache miss - compute collision boxes
     std::vector<AABB> boxes;
 
     int x0 = static_cast<int>(std::floor(area.x0));
@@ -153,6 +195,22 @@ std::vector<AABB> Level::getCollisionBoxes(Entity* /*entity*/, const AABB& area)
                 }
             }
         }
+    }
+
+    // Store in cache (LRU: replace oldest entry if full)
+    if (collisionCache.size() >= COLLISION_CACHE_SIZE) {
+        // Find oldest entry (lowest frameId) or first entry from current frame
+        size_t replaceIdx = 0;
+        int oldestFrame = collisionCache[0].frameId;
+        for (size_t i = 1; i < collisionCache.size(); ++i) {
+            if (collisionCache[i].frameId < oldestFrame) {
+                oldestFrame = collisionCache[i].frameId;
+                replaceIdx = i;
+            }
+        }
+        collisionCache[replaceIdx] = {area, boxes, collisionCacheFrameId};
+    } else {
+        collisionCache.push_back({area, boxes, collisionCacheFrameId});
     }
 
     return boxes;
@@ -407,6 +465,7 @@ void Level::addEntity(std::unique_ptr<Entity> entity) {
     if (auto* player = dynamic_cast<Player*>(entity.get())) {
         players.push_back(player);
     }
+    entitySpatialHash.insert(entity.get());
     entities.push_back(std::move(entity));
 }
 
@@ -414,6 +473,8 @@ void Level::removeEntity(Entity* entity) {
     if (auto* player = dynamic_cast<Player*>(entity)) {
         players.erase(std::remove(players.begin(), players.end(), player), players.end());
     }
+
+    entitySpatialHash.remove(entity);
 
     entities.erase(
         std::remove_if(entities.begin(), entities.end(),
@@ -430,13 +491,8 @@ Entity* Level::getEntityById(int id) {
 }
 
 std::vector<Entity*> Level::getEntitiesInArea(const AABB& area) const {
-    std::vector<Entity*> result;
-    for (const auto& entity : entities) {
-        if (entity->bb.intersects(area)) {
-            result.push_back(entity.get());
-        }
-    }
-    return result;
+    // Use spatial hash for O(cells + entities) instead of O(n) linear scan
+    return entitySpatialHash.query(area);
 }
 
 bool Level::isUnobstructed(const AABB& area) const {
@@ -485,7 +541,7 @@ bool Level::mayPlace(int tileId, int x, int y, int z, bool ignoreBoundingBox) co
 }
 
 void Level::tick() {
-    worldTime+=50;
+    ++collisionCacheFrameId;  // Invalidate old collision cache entries
     tickEntities();
     tickTiles();
     updateLights();  // Process queued light updates
@@ -493,10 +549,20 @@ void Level::tick() {
 
 void Level::tickEntities() {
     for (auto& entity : entities) {
+        // Store old bounding box for spatial hash update
+        AABB oldBB = entity->bb;
         entity->tick();
+        // Update spatial hash if entity moved
+        entitySpatialHash.update(entity.get(), oldBB);
     }
 
-    // Remove dead entities
+    // Remove dead entities (also remove from spatial hash)
+    for (auto& entity : entities) {
+        if (entity->removed) {
+            entitySpatialHash.remove(entity.get());
+        }
+    }
+
     entities.erase(
         std::remove_if(entities.begin(), entities.end(),
             [](const std::unique_ptr<Entity>& e) { return e->removed; }),

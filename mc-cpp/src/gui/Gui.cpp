@@ -87,10 +87,30 @@ void Gui::render(float partialTick) {
 
         blitOffset = -90.0f;
 
+        // Batch hotbar rendering (2 blits into 1 draw call)
         Textures::getInstance().bind("resources/gui/gui.png");
+        Tesselator& t = Tesselator::getInstance();
+        t.begin(DrawMode::Quads);
 
-        blit(scaledWidth / 2 - 91, scaledHeight - 22, 0, 0, 182, 22);
-        blit(scaledWidth / 2 - 91 - 1 + selectedSlot * 20, scaledHeight - 22 - 1, 0, 22, 24, 22);
+        float us = 0.00390625f;
+        float vs = 0.00390625f;
+
+        // Hotbar background
+        int hx = scaledWidth / 2 - 91, hy = scaledHeight - 22;
+        t.color(1.0f, 1.0f, 1.0f, 1.0f);
+        t.tex(0.0f, 22.0f * vs); t.vertex(static_cast<float>(hx), static_cast<float>(hy + 22), blitOffset);
+        t.tex(182.0f * us, 22.0f * vs); t.vertex(static_cast<float>(hx + 182), static_cast<float>(hy + 22), blitOffset);
+        t.tex(182.0f * us, 0.0f); t.vertex(static_cast<float>(hx + 182), static_cast<float>(hy), blitOffset);
+        t.tex(0.0f, 0.0f); t.vertex(static_cast<float>(hx), static_cast<float>(hy), blitOffset);
+
+        // Selection highlight
+        int sx = scaledWidth / 2 - 91 - 1 + selectedSlot * 20, sy = scaledHeight - 22 - 1;
+        t.tex(0.0f, 44.0f * vs); t.vertex(static_cast<float>(sx), static_cast<float>(sy + 22), blitOffset);
+        t.tex(24.0f * us, 44.0f * vs); t.vertex(static_cast<float>(sx + 24), static_cast<float>(sy + 22), blitOffset);
+        t.tex(24.0f * us, 22.0f * vs); t.vertex(static_cast<float>(sx + 24), static_cast<float>(sy), blitOffset);
+        t.tex(0.0f, 22.0f * vs); t.vertex(static_cast<float>(sx), static_cast<float>(sy), blitOffset);
+
+        t.end();
 
         if (player->inventory) {
             TileRenderer tileRenderer;
@@ -114,12 +134,14 @@ void Gui::render(float partialTick) {
     ShaderManager::getInstance().updateMatrices();
     ShaderManager::getInstance().setUseTexture(true);
 
+    // Crosshair and hearts/armor all use icons.png - batch where possible
     Textures::getInstance().bind("resources/gui/icons.png");
 
+    // Crosshair (special blend mode)
     device.setBlend(true, BlendFactor::OneMinusDstColor, BlendFactor::OneMinusSrcColor);
-
     blit(scaledWidth / 2 - 7, scaledHeight / 2 - 7, 0, 0, 16, 16);
 
+    // Hearts and armor (normal blend mode, same texture)
     device.setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
 
     if (player) {
@@ -127,6 +149,7 @@ void Gui::render(float partialTick) {
         renderArmor();
     }
 
+    // Text rendering (uses font texture)
     if (minecraft->showDebug) {
         renderDebugInfo();
     } else {
@@ -255,8 +278,12 @@ void Gui::renderHearts() {
 
     int baseY = scaledHeight - 32;
 
-    Textures::getInstance().bind("resources/gui/icons.png");
-    RenderDevice::get().setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
+    // Batch all heart blits into a single draw call
+    Tesselator& t = Tesselator::getInstance();
+    t.begin(DrawMode::Quads);
+
+    float us = 0.00390625f;
+    float vs = 0.00390625f;
 
     for (int i = 0; i < 10; i++) {
         int heartX = scaledWidth / 2 - 91 + i * 8;
@@ -266,16 +293,38 @@ void Gui::renderHearts() {
             heartY += random() % 2;
         }
 
-        blit(heartX, heartY, 16, 0, 9, 9);
+        // Background heart
+        int u = 16, v = 0, w = 9, h = 9;
+        t.color(1.0f, 1.0f, 1.0f, 1.0f);
+        t.tex(static_cast<float>(u) * us, static_cast<float>(v + h) * vs);
+        t.vertex(static_cast<float>(heartX), static_cast<float>(heartY + h), blitOffset);
+        t.tex(static_cast<float>(u + w) * us, static_cast<float>(v + h) * vs);
+        t.vertex(static_cast<float>(heartX + w), static_cast<float>(heartY + h), blitOffset);
+        t.tex(static_cast<float>(u + w) * us, static_cast<float>(v) * vs);
+        t.vertex(static_cast<float>(heartX + w), static_cast<float>(heartY), blitOffset);
+        t.tex(static_cast<float>(u) * us, static_cast<float>(v) * vs);
+        t.vertex(static_cast<float>(heartX), static_cast<float>(heartY), blitOffset);
 
+        // Full or half heart overlay
         if (i * 2 + 1 < health) {
-            blit(heartX, heartY, 52, 0, 9, 9);
+            u = 52; // Full heart
         } else if (i * 2 + 1 == health) {
-            blit(heartX, heartY, 61, 0, 9, 9);
+            u = 61; // Half heart
+        } else {
+            continue; // No overlay needed
         }
+
+        t.tex(static_cast<float>(u) * us, static_cast<float>(v + h) * vs);
+        t.vertex(static_cast<float>(heartX), static_cast<float>(heartY + h), blitOffset);
+        t.tex(static_cast<float>(u + w) * us, static_cast<float>(v + h) * vs);
+        t.vertex(static_cast<float>(heartX + w), static_cast<float>(heartY + h), blitOffset);
+        t.tex(static_cast<float>(u + w) * us, static_cast<float>(v) * vs);
+        t.vertex(static_cast<float>(heartX + w), static_cast<float>(heartY), blitOffset);
+        t.tex(static_cast<float>(u) * us, static_cast<float>(v) * vs);
+        t.vertex(static_cast<float>(heartX), static_cast<float>(heartY), blitOffset);
     }
 
-    RenderDevice::get().setBlend(false);
+    t.end();  // Single draw call for all hearts
 }
 
 void Gui::renderArmor() {
@@ -287,22 +336,37 @@ void Gui::renderArmor() {
 
     int baseY = scaledHeight - 32;
 
-    Textures::getInstance().bind("resources/gui/icons.png");
-    RenderDevice::get().setBlend(true, BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha);
+    // Batch all armor blits into a single draw call
+    Tesselator& t = Tesselator::getInstance();
+    t.begin(DrawMode::Quads);
+
+    float us = 0.00390625f;
+    float vs = 0.00390625f;
 
     for (int i = 0; i < 10; i++) {
         int armorX = scaledWidth / 2 + 91 - i * 8 - 9;
 
+        int u, v = 9, w = 9, h = 9;
         if (i * 2 + 1 < armor) {
-            blit(armorX, baseY, 34, 9, 9, 9);
+            u = 34; // Full armor
         } else if (i * 2 + 1 == armor) {
-            blit(armorX, baseY, 25, 9, 9, 9);
+            u = 25; // Half armor
         } else {
-            blit(armorX, baseY, 16, 9, 9, 9);
+            u = 16; // Empty armor
         }
+
+        t.color(1.0f, 1.0f, 1.0f, 1.0f);
+        t.tex(static_cast<float>(u) * us, static_cast<float>(v + h) * vs);
+        t.vertex(static_cast<float>(armorX), static_cast<float>(baseY + h), blitOffset);
+        t.tex(static_cast<float>(u + w) * us, static_cast<float>(v + h) * vs);
+        t.vertex(static_cast<float>(armorX + w), static_cast<float>(baseY + h), blitOffset);
+        t.tex(static_cast<float>(u + w) * us, static_cast<float>(v) * vs);
+        t.vertex(static_cast<float>(armorX + w), static_cast<float>(baseY), blitOffset);
+        t.tex(static_cast<float>(u) * us, static_cast<float>(v) * vs);
+        t.vertex(static_cast<float>(armorX), static_cast<float>(baseY), blitOffset);
     }
 
-    RenderDevice::get().setBlend(false);
+    t.end();  // Single draw call for all armor
 }
 
 void Gui::renderDebugInfo() {
@@ -310,31 +374,34 @@ void Gui::renderDebugInfo() {
 
     std::stringstream ss;
 
+    // Batch all debug text into a single draw call
+    font.beginBatch();
+
     ss << "Minecraft Beta 1.2_02 (C++) (" << minecraft->fps << " fps)";
-    font.drawShadow(ss.str(), 2, 2, 0xFFFFFF);
+    font.addText(ss.str(), 2, 2, 0xFFFFFF, true);
 
     if (player) {
         ss.str("");
         ss << std::fixed << std::setprecision(5);
         ss << "x: " << player->x;
-        font.drawShadow(ss.str(), 2, 64, 0xE0E0E0);
+        font.addText(ss.str(), 2, 64, 0xE0E0E0, true);
 
         ss.str("");
         ss << "y: " << player->y;
-        font.drawShadow(ss.str(), 2, 72, 0xE0E0E0);
+        font.addText(ss.str(), 2, 72, 0xE0E0E0, true);
 
         ss.str("");
         ss << "z: " << player->z;
-        font.drawShadow(ss.str(), 2, 80, 0xE0E0E0);
+        font.addText(ss.str(), 2, 80, 0xE0E0E0, true);
 
         ss.str("");
         ss << std::setprecision(2);
         ss << "xRot: " << player->xRot;
-        font.drawShadow(ss.str(), 2, 88, 0xE0E0E0);
+        font.addText(ss.str(), 2, 88, 0xE0E0E0, true);
 
         ss.str("");
         ss << "yRot: " << player->yRot;
-        font.drawShadow(ss.str(), 2, 96, 0xE0E0E0);
+        font.addText(ss.str(), 2, 96, 0xE0E0E0, true);
     }
 
     if (minecraft->levelRenderer) {
@@ -342,7 +409,7 @@ void Gui::renderDebugInfo() {
         ss << "C: " << minecraft->levelRenderer->chunksRendered
            << "/" << minecraft->levelRenderer->chunks.size()
            << " U: " << minecraft->levelRenderer->chunksUpdated;
-        font.drawShadow(ss.str(), 2, 12, 0xFFFFFF);
+        font.addText(ss.str(), 2, 12, 0xFFFFFF, true);
     }
 
     long totalMem = 512;
@@ -350,7 +417,9 @@ void Gui::renderDebugInfo() {
     ss.str("");
     ss << "Used memory: " << (usedMem * 100 / totalMem) << "% (" << usedMem << "MB) of " << totalMem << "MB";
     int memWidth = font.getWidth(ss.str());
-    font.drawShadow(ss.str(), scaledWidth - memWidth - 2, 2, 0xE0E0E0);
+    font.addText(ss.str(), scaledWidth - memWidth - 2, 2, 0xE0E0E0, true);
+
+    font.endBatch();  // Single draw call for all debug text
 }
 
 void Gui::renderChat() {

@@ -138,6 +138,9 @@ protected:
     void handleWaterMovement();
     void handleLavaMovement();
     void checkOnGround();
+
+    // Binary search for safe sneaking distance (8 iterations vs 20+ linear steps)
+    double findSafeSneakDistance(double desired, bool xAxis);
 };
 
 } // namespace mc

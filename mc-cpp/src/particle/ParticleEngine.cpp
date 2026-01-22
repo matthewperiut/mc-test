@@ -51,14 +51,25 @@ void ParticleEngine::addParticle(const std::string& name, double x, double y, do
 
 void ParticleEngine::tick() {
     for (int tt = 0; tt < TEXTURE_COUNT; ++tt) {
-        for (auto it = particles[tt].begin(); it != particles[tt].end();) {
-            (*it)->tick();
-            if ((*it)->removed) {
-                it = particles[tt].erase(it);
-            } else {
-                ++it;
+        auto& vec = particles[tt];
+
+        // Tick all particles
+        for (auto& particle : vec) {
+            particle->tick();
+        }
+
+        // Swap-erase: O(n) removal instead of O(n²)
+        // Move non-removed particles to front, then resize
+        size_t writeIdx = 0;
+        for (size_t readIdx = 0; readIdx < vec.size(); ++readIdx) {
+            if (!vec[readIdx]->removed) {
+                if (writeIdx != readIdx) {
+                    vec[writeIdx] = std::move(vec[readIdx]);
+                }
+                ++writeIdx;
             }
         }
+        vec.resize(writeIdx);
     }
 }
 

@@ -4,7 +4,9 @@
 #include "phys/Vec3.hpp"
 #include "phys/HitResult.hpp"
 #include "pathfinder/Path.hpp"
+#include "pathfinder/AsyncPathFinder.hpp"
 #include "world/LightingEngine.hpp"
+#include "util/SpatialHash.hpp"
 #include <vector>
 #include <memory>
 #include <functional>
@@ -67,6 +69,22 @@ public:
     // Lighting engine (Java-style lighting system)
     std::unique_ptr<LightingEngine> lightingEngine;
 
+    // Spatial hash for O(1) entity queries
+    SpatialHash entitySpatialHash;
+
+    // Async pathfinder for non-blocking pathfinding
+    std::unique_ptr<AsyncPathFinder> asyncPathFinder;
+
+    // Collision box cache - stores recent queries to avoid recomputation
+    static constexpr int COLLISION_CACHE_SIZE = 16;
+    struct CollisionCacheEntry {
+        AABB queryArea;
+        std::vector<AABB> boxes;
+        int frameId;
+    };
+    mutable std::vector<CollisionCacheEntry> collisionCache;
+    mutable int collisionCacheFrameId = 0;
+
     Level(int width, int height, int depth, long long seed = 0);
     ~Level();
 
@@ -123,9 +141,12 @@ public:
     void tickEntities();
     void animateTick(int centerX, int centerY, int centerZ);  // Called for visual particle effects
 
-    // Pathfinding
+    // Pathfinding (synchronous - still available for immediate needs)
     std::unique_ptr<Path> findPath(Entity* entity, Entity* target, float maxDist);
     std::unique_ptr<Path> findPath(Entity* entity, int x, int y, int z, float maxDist);
+
+    // Async pathfinding (preferred for non-blocking operation)
+    AsyncPathFinder* getAsyncPathFinder() { return asyncPathFinder.get(); }
 
     // Listeners
     void addListener(LevelListener* listener);

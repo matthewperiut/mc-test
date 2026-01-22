@@ -89,6 +89,27 @@ void Entity::updateBoundingBox() {
               x + hw, y - heightOffset + ySlideOffset + bbHeight, z + hw);
 }
 
+double Entity::findSafeSneakDistance(double desired, bool xAxis) {
+    if (desired == 0.0 || !level) return desired;
+
+    double lo = 0.0;
+    double hi = std::abs(desired);
+    double sign = desired > 0.0 ? 1.0 : -1.0;
+
+    // Binary search: 8 iterations gives ~0.004 block precision (good enough for 0.05 step size)
+    for (int i = 0; i < 8; ++i) {
+        double mid = (lo + hi) / 2.0;
+        AABB testBB = xAxis ? bb.move(mid * sign, -1.0, 0.0)
+                            : bb.move(0.0, -1.0, mid * sign);
+        if (level->getCollisionBoxes(this, testBB).empty()) {
+            hi = mid;  // No ground at this distance - reduce
+        } else {
+            lo = mid;  // Has ground - can go at least this far
+        }
+    }
+    return lo * sign;
+}
+
 void Entity::move(double dx, double dy, double dz) {
     if (noPhysicsCount > 0 || noClip) {
         x += dx;
@@ -103,49 +124,39 @@ void Entity::move(double dx, double dy, double dz) {
     double origDz = dz;
 
     // Sneaking edge detection - prevents falling off edges when sneaking
-    // Matches Java Entity.move() exactly
+    // Uses binary search for O(8) iterations instead of O(20+) linear steps
     if (level && onGround && isSneaking()) {
-        constexpr double stepSize = 0.05;
-
-        // Reduce X movement until there's ground below
-        while (dx != 0.0 && level->getCollisionBoxes(this, bb.move(dx, -1.0, 0.0)).empty()) {
-            if (dx < stepSize && dx >= -stepSize) {
-                dx = 0.0;
-            } else if (dx > 0.0) {
-                dx -= stepSize;
-            } else {
-                dx += stepSize;
-            }
+        // Check X axis
+        if (dx != 0.0 && level->getCollisionBoxes(this, bb.move(dx, -1.0, 0.0)).empty()) {
+            dx = findSafeSneakDistance(dx, true);
         }
 
-        // Reduce Z movement until there's ground below
-        while (dz != 0.0 && level->getCollisionBoxes(this, bb.move(0.0, -1.0, dz)).empty()) {
-            if (dz < stepSize && dz >= -stepSize) {
-                dz = 0.0;
-            } else if (dz > 0.0) {
-                dz -= stepSize;
-            } else {
-                dz += stepSize;
-            }
+        // Check Z axis
+        if (dz != 0.0 && level->getCollisionBoxes(this, bb.move(0.0, -1.0, dz)).empty()) {
+            dz = findSafeSneakDistance(dz, false);
         }
 
-        // Also check diagonal movement (X and Z combined)
-        while (dx != 0.0 && dz != 0.0 && level->getCollisionBoxes(this, bb.move(dx, -1.0, dz)).empty()) {
-            if (dx < stepSize && dx >= -stepSize) {
-                dx = 0.0;
-            } else if (dx > 0.0) {
-                dx -= stepSize;
-            } else {
-                dx += stepSize;
-            }
+        // Check diagonal: if combined movement has no ground, reduce both
+        if (dx != 0.0 && dz != 0.0 && level->getCollisionBoxes(this, bb.move(dx, -1.0, dz)).empty()) {
+            // Binary search for diagonal - reduce both proportionally
+            double lo = 0.0;
+            double hi = 1.0;
+            double sign_dx = dx > 0.0 ? 1.0 : -1.0;
+            double sign_dz = dz > 0.0 ? 1.0 : -1.0;
+            double abs_dx = std::abs(dx);
+            double abs_dz = std::abs(dz);
 
-            if (dz < stepSize && dz >= -stepSize) {
-                dz = 0.0;
-            } else if (dz > 0.0) {
-                dz -= stepSize;
-            } else {
-                dz += stepSize;
+            for (int i = 0; i < 8; ++i) {
+                double mid = (lo + hi) / 2.0;
+                AABB testBB = bb.move(mid * abs_dx * sign_dx, -1.0, mid * abs_dz * sign_dz);
+                if (level->getCollisionBoxes(this, testBB).empty()) {
+                    hi = mid;
+                } else {
+                    lo = mid;
+                }
             }
+            dx = lo * abs_dx * sign_dx;
+            dz = lo * abs_dz * sign_dz;
         }
     }
 
