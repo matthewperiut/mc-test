@@ -342,6 +342,15 @@ void Minecraft::tick() {
     // Tick level
     if (level) {
         level->tick();
+
+        // Animate tiles (spawn particles like torch flames/smoke)
+        if (player) {
+            level->animateTick(
+                static_cast<int>(player->x),
+                static_cast<int>(player->y),
+                static_cast<int>(player->z)
+            );
+        }
     }
 
     // Tick particles

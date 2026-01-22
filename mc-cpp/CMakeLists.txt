@@ -283,6 +283,8 @@ set(MODEL_SOURCES
 set(PARTICLE_SOURCES
         src/particle/Particle.cpp
         src/particle/ExplodeParticle.cpp
+        src/particle/FlameParticle.cpp
+        src/particle/SmokeParticle.cpp
         src/particle/ParticleEngine.cpp
 )
 

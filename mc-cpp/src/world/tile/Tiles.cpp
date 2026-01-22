@@ -158,6 +158,42 @@ public:
 
     int getLightEmission() const override { return 14; }
 
+    // Spawn smoke and flame particles at torch position (matching Java TorchTile.animateTick)
+    void animateTick(Level* level, int x, int y, int z) override {
+        int data = level->getData(x, y, z);
+
+        // Base position at center of block
+        double px = static_cast<double>(x) + 0.5;
+        double py = static_cast<double>(y) + 0.7;
+        double pz = static_cast<double>(z) + 0.5;
+
+        // Offsets for wall-mounted torches (matching Java: var13 = 0.22F, var15 = 0.27F)
+        double yOffset = 0.22;
+        double horizontalOffset = 0.27;
+
+        if (data == 1) {
+            // West wall - torch extends east
+            level->addParticle("smoke", px - horizontalOffset, py + yOffset, pz, 0.0, 0.0, 0.0);
+            level->addParticle("flame", px - horizontalOffset, py + yOffset, pz, 0.0, 0.0, 0.0);
+        } else if (data == 2) {
+            // East wall - torch extends west
+            level->addParticle("smoke", px + horizontalOffset, py + yOffset, pz, 0.0, 0.0, 0.0);
+            level->addParticle("flame", px + horizontalOffset, py + yOffset, pz, 0.0, 0.0, 0.0);
+        } else if (data == 3) {
+            // North wall - torch extends south
+            level->addParticle("smoke", px, py + yOffset, pz - horizontalOffset, 0.0, 0.0, 0.0);
+            level->addParticle("flame", px, py + yOffset, pz - horizontalOffset, 0.0, 0.0, 0.0);
+        } else if (data == 4) {
+            // South wall - torch extends north
+            level->addParticle("smoke", px, py + yOffset, pz + horizontalOffset, 0.0, 0.0, 0.0);
+            level->addParticle("flame", px, py + yOffset, pz + horizontalOffset, 0.0, 0.0, 0.0);
+        } else {
+            // Floor torch (data == 5 or default)
+            level->addParticle("smoke", px, py, pz, 0.0, 0.0, 0.0);
+            level->addParticle("flame", px, py, pz, 0.0, 0.0, 0.0);
+        }
+    }
+
     // Check if torch can be placed (needs adjacent solid block)
     bool mayPlace(Level* level, int x, int y, int z) const override {
         if (level->isSolid(x - 1, y, z)) return true;  // West wall

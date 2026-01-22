@@ -174,6 +174,7 @@ public:
 
     // Behavior
     virtual void tick(Level* level, int x, int y, int z) {}
+    virtual void animateTick(Level* level, int x, int y, int z) {}  // Called for visual effects (particles)
     virtual void onPlace(Level* level, int x, int y, int z) {}
     virtual void onRemove(Level* level, int x, int y, int z) {}
     virtual void onNeighborChange(Level* level, int x, int y, int z, int neighborId) {}

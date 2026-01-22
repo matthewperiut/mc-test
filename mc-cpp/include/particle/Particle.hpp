@@ -72,6 +72,9 @@ public:
     // Get brightness at current position
     float getBrightness() const;
 
+    // Get render size (may be different from size due to animation)
+    virtual float getRenderSize(float partialTick) const { return size; }
+
     // Texture type (0 = misc/particles.png, 1 = terrain.png, 2 = items.png)
     virtual int getParticleTexture() const { return 0; }
 

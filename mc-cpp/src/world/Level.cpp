@@ -521,6 +521,30 @@ void Level::tickTiles() {
     }
 }
 
+void Level::animateTick(int centerX, int centerY, int centerZ) {
+    // Called each tick to spawn visual particle effects for nearby tiles
+    // Matches Java Level.animateTick exactly: 1000 iterations with triangular distribution
+
+    for (int i = 0; i < 1000; i++) {
+        // Java uses: var1 + this.random.nextInt(16) - this.random.nextInt(16)
+        // This creates a triangular distribution centered at 0, range -15 to +15
+        // Positions closer to the player are more likely to be selected
+        int x = centerX + Mth::random(0, 15) - Mth::random(0, 15);
+        int y = centerY + Mth::random(0, 15) - Mth::random(0, 15);
+        int z = centerZ + Mth::random(0, 15) - Mth::random(0, 15);
+
+        if (!isInBounds(x, y, z)) continue;
+
+        int tileId = getTile(x, y, z);
+        if (tileId > 0) {
+            Tile* tile = Tile::tiles[tileId].get();
+            if (tile) {
+                tile->animateTick(this, x, y, z);
+            }
+        }
+    }
+}
+
 void Level::addListener(LevelListener* listener) {
     listeners.push_back(listener);
 }

@@ -1,6 +1,8 @@
 #include "particle/ParticleEngine.hpp"
 #include "particle/Particle.hpp"
 #include "particle/ExplodeParticle.hpp"
+#include "particle/FlameParticle.hpp"
+#include "particle/SmokeParticle.hpp"
 #include "entity/Entity.hpp"
 #include "world/Level.hpp"
 #include "renderer/Textures.hpp"
@@ -40,10 +42,11 @@ void ParticleEngine::addParticle(const std::string& name, double x, double y, do
 
     if (name == "explode") {
         add(std::make_unique<ExplodeParticle>(level, x, y, z, xa, ya, za));
+    } else if (name == "smoke") {
+        add(std::make_unique<SmokeParticle>(level, x, y, z, xa, ya, za));
+    } else if (name == "flame") {
+        add(std::make_unique<FlameParticle>(level, x, y, z, xa, ya, za));
     }
-    // Add more particle types here as needed:
-    // else if (name == "smoke") { ... }
-    // else if (name == "flame") { ... }
 }
 
 void ParticleEngine::tick() {
@@ -103,8 +106,8 @@ void ParticleEngine::render(Entity* player, float partialTick) {
             float v0 = static_cast<float>(particle->tex / 16) / 16.0f;
             float v1 = v0 + 0.0624375f;
 
-            // Particle size
-            float r = 0.1f * particle->size;
+            // Particle size (uses virtual method for animated sizes)
+            float r = 0.1f * particle->getRenderSize(partialTick);
 
             // Interpolated position in WORLD space (shader handles camera transform)
             float px = static_cast<float>(particle->prevX + (particle->x - particle->prevX) * partialTick);

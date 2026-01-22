@@ -121,6 +121,7 @@ public:
     void tick();
     void tickTiles();
     void tickEntities();
+    void animateTick(int centerX, int centerY, int centerZ);  // Called for visual particle effects
 
     // Pathfinding
     std::unique_ptr<Path> findPath(Entity* entity, Entity* target, float maxDist);
