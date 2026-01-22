@@ -453,40 +453,48 @@ void Minecraft::handleInput() {
                 // Just started breaking - trigger swing animation and start
                 player->swing();
                 gameMode->startDestroyBlock(x, y, z, face);
-                isBreakingBlock = true;
-                breakingX = x;
-                breakingY = y;
-                breakingZ = z;
-                breakingFace = face;
-            } else {
-                // Update target block (in case player moved aim)
-                breakingX = x;
-                breakingY = y;
-                breakingZ = z;
-                breakingFace = face;
             }
+
+            // Always update target and mark as breaking when pointing at a tile
+            // This allows resuming after an entity was in the way
+            isBreakingBlock = true;
+            breakingX = x;
+            breakingY = y;
+            breakingZ = z;
+            breakingFace = face;
 
             // Track block position for crack animation
             levelRenderer->destroyX = x;
             levelRenderer->destroyY = y;
             levelRenderer->destroyZ = z;
         } else if (leftMouseDown && gameRenderer->hitResult.isEntity()) {
-            // Left-click on entity - attack
+            // Left-click on entity - attack only on first click
             if (!wasBreaking) {
-                // Only attack on first click (not held)
                 gameMode->attack(player, gameRenderer->hitResult.entity);
             }
+            // Pause breaking while entity is in the way (Java: stopDestroyBlock resets progress)
+            // Setting isBreakingBlock=false stops tick() from continuing on old coords
+            // But wasBreaking stays true (it's just leftMouseDown), so when we look back at a tile,
+            // we go to the else branch which now properly sets isBreakingBlock=true again
+            if (isBreakingBlock) {
+                gameMode->stopDestroyBlock();
+                levelRenderer->destroyProgress = 0.0f;
+                isBreakingBlock = false;
+            }
+        } else if (leftMouseDown && isBreakingBlock) {
+            // Was breaking but now looking at air/nothing - stop breaking (Java: handleMouseDown else branch)
+            gameMode->stopDestroyBlock();
+            levelRenderer->destroyProgress = 0.0f;
             isBreakingBlock = false;
         } else if (leftMouseDown && !wasBreaking) {
             // Left-click in air (no tile hit) - still trigger swing
             player->swing();
-            isBreakingBlock = false;
-        } else if (wasBreaking && !leftMouseDown) {
-            // Stopped breaking
-            gameMode->stopDestroyBlock();
-            levelRenderer->destroyProgress = 0.0f;
-            isBreakingBlock = false;
         } else if (!leftMouseDown) {
+            // Released mouse button - stop breaking
+            if (isBreakingBlock) {
+                gameMode->stopDestroyBlock();
+                levelRenderer->destroyProgress = 0.0f;
+            }
             isBreakingBlock = false;
         }
 

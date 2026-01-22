@@ -206,13 +206,48 @@ void SurvivalMode::continueDestroyBlock(int x, int y, int z, int face) {
             destroyDelay = 5;  // Java: this.destroyDelay = 5
         }
     } else {
-        // Different block - reset progress
-        destroyProgress = 0.0f;
-        oDestroyProgress = 0.0f;
-        destroyTicks = 0.0f;
-        xDestroyBlock = x;
-        yDestroyBlock = y;
-        zDestroyBlock = z;
+        // Different block - reset progress and start on new block
+        // This enables continuous breaking: after one block breaks, immediately start the next
+        if (!minecraft->level) return;
+
+        int tileId = minecraft->level->getTile(x, y, z);
+        if (tileId <= 0) {
+            // No block here, just reset
+            destroyProgress = 0.0f;
+            oDestroyProgress = 0.0f;
+            destroyTicks = 0.0f;
+            xDestroyBlock = -1;
+            yDestroyBlock = -1;
+            zDestroyBlock = -1;
+            return;
+        }
+
+        Tile* tile = Tile::tiles[tileId].get();
+        if (!tile) return;
+
+        // Attack the new tile (e.g., note block plays sound) - matching Java startDestroyBlock
+        tile->attack(minecraft->level.get(), x, y, z, minecraft->player);
+
+        // Check for instant break (like flowers, torches)
+        float breakSpeed = tile->getDestroyProgress(minecraft->player);
+        if (breakSpeed >= 1.0f) {
+            destroyBlock(x, y, z, face);
+            destroyDelay = 5;
+            destroyProgress = 0.0f;
+            oDestroyProgress = 0.0f;
+            destroyTicks = 0.0f;
+            xDestroyBlock = x;
+            yDestroyBlock = y;
+            zDestroyBlock = z;
+        } else {
+            // Not instant - start normal breaking
+            destroyProgress = 0.0f;
+            oDestroyProgress = 0.0f;
+            destroyTicks = 0.0f;
+            xDestroyBlock = x;
+            yDestroyBlock = y;
+            zDestroyBlock = z;
+        }
     }
 }
 

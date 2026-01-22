@@ -51,7 +51,7 @@ public:
 
     // Override rendering helpers
     bool shouldRender(double camX, double camY, double camZ, float maxDist) const override;
-    bool isPickable() const override { return true; }
+    bool isPickable() const override { return false; }  // ItemEntities don't block block breaking
 
     // Get interpolated position during pickup animation
     void getPickupAnimatedPos(float partialTick, double& outX, double& outY, double& outZ) const;
