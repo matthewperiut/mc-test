@@ -26,6 +26,13 @@ namespace mc {
 class MTLVertexBuffer;
 class MTLIndexBuffer;
 
+// Result of a stream ring buffer allocation
+struct StreamAllocation {
+    MTL::Buffer* buffer = nullptr;
+    size_t offset = 0;
+    bool ownsBuffer = false;  // True if caller must release this buffer (fallback path)
+};
+
 class MTLRenderDevice : public RenderDevice {
 public:
     MTLRenderDevice();
@@ -100,9 +107,16 @@ public:
     void setCurrentIndexBuffer(MTLIndexBuffer* buffer) { currentIndexBuffer = buffer; }
     MTLShaderPipeline* getCurrentPipeline() const { return currentPipeline; }
 
+    // Stream ring buffer allocator (for Tesselator streaming data)
+    StreamAllocation allocateStream(size_t sizeBytes);
+
 private:
     void createDepthStencilStates();
     void createDepthTexture();
+    void createStreamBuffers();
+    void destroyStreamBuffers();
+    void resetEncoderState();
+    void bindPipelineAndUniforms(BlendMode effectiveMode);
     int toMTLPrimitive(mc::PrimitiveType prim);  // Returns MTL::PrimitiveType as int
 
     MTL::Device* device;
@@ -149,6 +163,19 @@ private:
     static constexpr int MAX_FRAMES_IN_FLIGHT = 3;
     void* frameSemaphore;  // dispatch_semaphore_t
     int currentFrameIndex;
+
+    // Stream ring buffer (one per frame-in-flight, 8MB each)
+    static constexpr size_t STREAM_BUFFER_SIZE = 8 * 1024 * 1024;
+    MTL::Buffer* streamBuffers[MAX_FRAMES_IN_FLIGHT] = {};
+    size_t streamOffset = 0;  // Current write offset in the active frame's buffer
+
+    // Encoder state tracking (avoid redundant Metal API calls)
+    MTL::RenderPipelineState* lastBoundPipelineState = nullptr;
+    MTLShaderPipeline* lastUniformPipeline = nullptr;  // Last pipeline whose uniforms were uploaded
+    MTL::Buffer* lastBoundVBO = nullptr;
+    size_t lastBoundVBOOffset = SIZE_MAX;
+    MTL::DepthStencilState* lastBoundDepthStencil = nullptr;
+    int lastBoundCullMode = -1;  // -1 = unset
 };
 
 } // namespace mc

@@ -23,11 +23,14 @@ public:
     bool isValid() const override { return buffer != nullptr; }
 
     MTL::Buffer* getBuffer() const { return buffer; }
+    size_t getOffset() const { return bufferOffset; }
 
 private:
     MTL::Device* device;
     MTL::Buffer* buffer;
     size_t bufferSize;
+    size_t bufferOffset = 0;   // Offset within ring buffer (0 for owned buffers)
+    bool ownsBuffer = true;    // False when using stream ring buffer
 };
 
 class MTLIndexBuffer : public IndexBuffer {
@@ -44,11 +47,14 @@ public:
     bool isValid() const override { return buffer != nullptr; }
 
     MTL::Buffer* getBuffer() const { return buffer; }
+    size_t getOffset() const { return bufferOffset; }
 
 private:
     MTL::Device* device;
     MTL::Buffer* buffer;
     size_t indexCount;
+    size_t bufferOffset = 0;   // Offset within ring buffer (0 for owned buffers)
+    bool ownsBuffer = true;    // False when using stream ring buffer
 };
 
 } // namespace mc

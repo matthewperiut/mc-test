@@ -284,9 +284,12 @@ void MTLShaderPipeline::setInt(const std::string& name, int value) {
     auto it = uniformOffsets.find(name);
     if (it == uniformOffsets.end()) return;
 
-    std::vector<uint8_t>& buffer = isVertexUniform(name) ? vertexUniformData : fragmentUniformData;
+    bool isVertex = isVertexUniform(name);
+    std::vector<uint8_t>& buffer = isVertex ? vertexUniformData : fragmentUniformData;
     if (it->second + sizeof(int) <= buffer.size()) {
         memcpy(buffer.data() + it->second, &value, sizeof(int));
+        if (isVertex) vertexUniformsDirty = true;
+        else fragmentUniformsDirty = true;
     }
 }
 
@@ -294,9 +297,12 @@ void MTLShaderPipeline::setFloat(const std::string& name, float value) {
     auto it = uniformOffsets.find(name);
     if (it == uniformOffsets.end()) return;
 
-    std::vector<uint8_t>& buffer = isVertexUniform(name) ? vertexUniformData : fragmentUniformData;
+    bool isVertex = isVertexUniform(name);
+    std::vector<uint8_t>& buffer = isVertex ? vertexUniformData : fragmentUniformData;
     if (it->second + sizeof(float) <= buffer.size()) {
         memcpy(buffer.data() + it->second, &value, sizeof(float));
+        if (isVertex) vertexUniformsDirty = true;
+        else fragmentUniformsDirty = true;
     }
 }
 
@@ -305,9 +311,12 @@ void MTLShaderPipeline::setVec2(const std::string& name, float x, float y) {
     if (it == uniformOffsets.end()) return;
 
     float data[2] = {x, y};
-    std::vector<uint8_t>& buffer = isVertexUniform(name) ? vertexUniformData : fragmentUniformData;
+    bool isVertex = isVertexUniform(name);
+    std::vector<uint8_t>& buffer = isVertex ? vertexUniformData : fragmentUniformData;
     if (it->second + sizeof(data) <= buffer.size()) {
         memcpy(buffer.data() + it->second, data, sizeof(data));
+        if (isVertex) vertexUniformsDirty = true;
+        else fragmentUniformsDirty = true;
     }
 }
 
@@ -316,9 +325,12 @@ void MTLShaderPipeline::setVec3(const std::string& name, float x, float y, float
     if (it == uniformOffsets.end()) return;
 
     float data[3] = {x, y, z};
-    std::vector<uint8_t>& buffer = isVertexUniform(name) ? vertexUniformData : fragmentUniformData;
+    bool isVertex = isVertexUniform(name);
+    std::vector<uint8_t>& buffer = isVertex ? vertexUniformData : fragmentUniformData;
     if (it->second + sizeof(data) <= buffer.size()) {
         memcpy(buffer.data() + it->second, data, sizeof(data));
+        if (isVertex) vertexUniformsDirty = true;
+        else fragmentUniformsDirty = true;
     }
 }
 
@@ -327,9 +339,12 @@ void MTLShaderPipeline::setVec4(const std::string& name, float x, float y, float
     if (it == uniformOffsets.end()) return;
 
     float data[4] = {x, y, z, w};
-    std::vector<uint8_t>& buffer = isVertexUniform(name) ? vertexUniformData : fragmentUniformData;
+    bool isVertex = isVertexUniform(name);
+    std::vector<uint8_t>& buffer = isVertex ? vertexUniformData : fragmentUniformData;
     if (it->second + sizeof(data) <= buffer.size()) {
         memcpy(buffer.data() + it->second, data, sizeof(data));
+        if (isVertex) vertexUniformsDirty = true;
+        else fragmentUniformsDirty = true;
     }
 }
 
@@ -344,9 +359,12 @@ void MTLShaderPipeline::setMat3(const std::string& name, const float* matrix) {
     expanded[4] = matrix[3]; expanded[5] = matrix[4]; expanded[6] = matrix[5]; expanded[7] = 0;
     expanded[8] = matrix[6]; expanded[9] = matrix[7]; expanded[10] = matrix[8]; expanded[11] = 0;
 
-    std::vector<uint8_t>& buffer = isVertexUniform(name) ? vertexUniformData : fragmentUniformData;
+    bool isVertex = isVertexUniform(name);
+    std::vector<uint8_t>& buffer = isVertex ? vertexUniformData : fragmentUniformData;
     if (it->second + sizeof(expanded) <= buffer.size()) {
         memcpy(buffer.data() + it->second, expanded, sizeof(expanded));
+        if (isVertex) vertexUniformsDirty = true;
+        else fragmentUniformsDirty = true;
     }
 }
 
@@ -354,7 +372,8 @@ void MTLShaderPipeline::setMat4(const std::string& name, const float* matrix) {
     auto it = uniformOffsets.find(name);
     if (it == uniformOffsets.end()) return;
 
-    std::vector<uint8_t>& buffer = isVertexUniform(name) ? vertexUniformData : fragmentUniformData;
+    bool isVertex = isVertexUniform(name);
+    std::vector<uint8_t>& buffer = isVertex ? vertexUniformData : fragmentUniformData;
     if (it->second + 16 * sizeof(float) <= buffer.size()) {
         if (name == "uMVP") {
             // Apply OpenGL to Metal NDC transformation
@@ -379,6 +398,8 @@ void MTLShaderPipeline::setMat4(const std::string& name, const float* matrix) {
         } else {
             memcpy(buffer.data() + it->second, matrix, 16 * sizeof(float));
         }
+        if (isVertex) vertexUniformsDirty = true;
+        else fragmentUniformsDirty = true;
     }
 }
 

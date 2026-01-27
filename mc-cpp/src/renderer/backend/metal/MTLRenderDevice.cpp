@@ -93,6 +93,9 @@ bool MTLRenderDevice::init(void* glfwWindow) {
     // Create depth texture
     createDepthTexture();
 
+    // Create stream ring buffers for per-frame streaming data
+    createStreamBuffers();
+
     std::cout << "Metal render device initialized" << std::endl;
     std::cout << "  Device: " << device->name()->utf8String() << std::endl;
     std::cout << "  Viewport: " << viewportWidth << "x" << viewportHeight << std::endl;
@@ -113,6 +116,8 @@ void MTLRenderDevice::shutdown() {
         // Note: dispatch_semaphore_t is ARC-managed on modern macOS, no explicit release needed
         frameSemaphore = nullptr;
     }
+
+    destroyStreamBuffers();
 
     if (depthTexture) {
         depthTexture->release();
@@ -270,6 +275,12 @@ void MTLRenderDevice::beginFrame() {
 
     // Set initial viewport
     setViewport(0, 0, viewportWidth, viewportHeight);
+
+    // Reset stream buffer offset for this frame
+    streamOffset = 0;
+
+    // Reset encoder state tracking (new encoder = no prior state)
+    resetEncoderState();
 }
 
 void MTLRenderDevice::endFrame() {
@@ -402,15 +413,23 @@ void MTLRenderDevice::clearDepthMidFrame() {
 
     // Restore viewport
     setViewport(0, 0, viewportWidth, viewportHeight);
+
+    // Reset encoder state tracking (new encoder = no prior state)
+    resetEncoderState();
 }
 
 void MTLRenderDevice::setDepthTest(bool enabled) {
     depthTestState = enabled;
     if (renderEncoder) {
+        MTL::DepthStencilState* desired;
         if (enabled) {
-            renderEncoder->setDepthStencilState(depthWriteState ? depthTestEnabled : depthWriteDisabled);
+            desired = depthWriteState ? depthTestEnabled : depthWriteDisabled;
         } else {
-            renderEncoder->setDepthStencilState(depthTestDisabled);
+            desired = depthTestDisabled;
+        }
+        if (desired != lastBoundDepthStencil) {
+            renderEncoder->setDepthStencilState(desired);
+            lastBoundDepthStencil = desired;
         }
     }
 }
@@ -418,7 +437,11 @@ void MTLRenderDevice::setDepthTest(bool enabled) {
 void MTLRenderDevice::setDepthWrite(bool enabled) {
     depthWriteState = enabled;
     if (renderEncoder && depthTestState) {
-        renderEncoder->setDepthStencilState(enabled ? depthTestEnabled : depthWriteDisabled);
+        MTL::DepthStencilState* desired = enabled ? depthTestEnabled : depthWriteDisabled;
+        if (desired != lastBoundDepthStencil) {
+            renderEncoder->setDepthStencilState(desired);
+            lastBoundDepthStencil = desired;
+        }
     }
 }
 
@@ -431,20 +454,19 @@ void MTLRenderDevice::setCullFace(bool enabled, CullMode mode) {
     cullFaceState = enabled;
     cullModeState = mode;
     if (renderEncoder) {
+        int desiredCull;
         if (enabled) {
             switch (mode) {
-                case CullMode::Back:
-                    renderEncoder->setCullMode(MTL::CullModeBack);
-                    break;
-                case CullMode::Front:
-                    renderEncoder->setCullMode(MTL::CullModeFront);
-                    break;
-                case CullMode::None:
-                    renderEncoder->setCullMode(MTL::CullModeNone);
-                    break;
+                case CullMode::Back:  desiredCull = static_cast<int>(MTL::CullModeBack); break;
+                case CullMode::Front: desiredCull = static_cast<int>(MTL::CullModeFront); break;
+                case CullMode::None:  desiredCull = static_cast<int>(MTL::CullModeNone); break;
             }
         } else {
-            renderEncoder->setCullMode(MTL::CullModeNone);
+            desiredCull = static_cast<int>(MTL::CullModeNone);
+        }
+        if (desiredCull != lastBoundCullMode) {
+            renderEncoder->setCullMode(static_cast<MTL::CullMode>(desiredCull));
+            lastBoundCullMode = desiredCull;
         }
     }
 }
@@ -517,36 +539,53 @@ std::unique_ptr<Texture> MTLRenderDevice::createTexture() {
     return std::make_unique<MTLTexture>(device);
 }
 
+void MTLRenderDevice::bindPipelineAndUniforms(BlendMode effectiveMode) {
+    // Bind pipeline state only if changed
+    MTL::RenderPipelineState* desiredPipeline = currentPipeline->getPipelineState(effectiveMode);
+    if (desiredPipeline != lastBoundPipelineState) {
+        renderEncoder->setRenderPipelineState(desiredPipeline);
+        lastBoundPipelineState = desiredPipeline;
+    }
+
+    // Upload uniforms only if dirty or pipeline changed (encoder state may be stale)
+    bool pipelineChanged = (currentPipeline != lastUniformPipeline);
+
+    const auto& vertUniforms = currentPipeline->getVertexUniformData();
+    if (!vertUniforms.empty() && (pipelineChanged || currentPipeline->isVertexUniformsDirty())) {
+        renderEncoder->setVertexBytes(vertUniforms.data(), vertUniforms.size(), 0);
+        currentPipeline->clearVertexUniformsDirty();
+    }
+
+    const auto& fragUniforms = currentPipeline->getFragmentUniformData();
+    if (!fragUniforms.empty() && (pipelineChanged || currentPipeline->isFragmentUniformsDirty())) {
+        renderEncoder->setFragmentBytes(fragUniforms.data(), fragUniforms.size(), 2);
+        currentPipeline->clearFragmentUniformsDirty();
+    }
+
+    lastUniformPipeline = currentPipeline;
+}
+
 void MTLRenderDevice::draw(PrimitiveType primitive, size_t vertexCount, size_t startVertex) {
     if (!renderEncoder || !currentPipeline || !currentVertexBuffer) {
         return;
     }
 
-    // Bind pipeline state with current blend mode
-    // Use shader's default blend mode unless a specific mode is set
+    // Determine effective blend mode
     BlendMode effectiveMode = currentBlendMode;
-    // For sky shader, always use its default additive blending
     if (currentPipeline->getDefaultBlendMode() == BlendMode::Additive) {
         effectiveMode = BlendMode::Additive;
     }
-    renderEncoder->setRenderPipelineState(currentPipeline->getPipelineState(effectiveMode));
 
-    // Bind vertex buffer at index 30 (to avoid conflict with uniform buffers)
+    // Bind pipeline and upload uniforms (with deduplication)
+    bindPipelineAndUniforms(effectiveMode);
+
+    // Bind vertex buffer only if changed
     MTL::Buffer* vbuf = currentVertexBuffer->getBuffer();
-    if (vbuf) {
-        renderEncoder->setVertexBuffer(vbuf, 0, VERTEX_BUFFER_INDEX);
-    }
-
-    // Upload vertex uniforms (buffer 0)
-    const auto& vertUniforms = currentPipeline->getVertexUniformData();
-    if (!vertUniforms.empty()) {
-        renderEncoder->setVertexBytes(vertUniforms.data(), vertUniforms.size(), 0);
-    }
-
-    // Upload fragment uniforms (buffer 2, as generated by SPIRV-Cross)
-    const auto& fragUniforms = currentPipeline->getFragmentUniformData();
-    if (!fragUniforms.empty()) {
-        renderEncoder->setFragmentBytes(fragUniforms.data(), fragUniforms.size(), 2);
+    size_t vbufOffset = currentVertexBuffer->getOffset();
+    if (vbuf && (vbuf != lastBoundVBO || vbufOffset != lastBoundVBOOffset)) {
+        renderEncoder->setVertexBuffer(vbuf, vbufOffset, VERTEX_BUFFER_INDEX);
+        lastBoundVBO = vbuf;
+        lastBoundVBOOffset = vbufOffset;
     }
 
     // Draw
@@ -558,45 +597,38 @@ void MTLRenderDevice::drawIndexed(PrimitiveType primitive, size_t indexCount, si
         return;
     }
 
-    // Bind pipeline state with current blend mode
+    // Determine effective blend mode
     BlendMode effectiveMode = currentBlendMode;
-    // For sky shader, always use its default additive blending
     if (currentPipeline->getDefaultBlendMode() == BlendMode::Additive) {
         effectiveMode = BlendMode::Additive;
     }
-    renderEncoder->setRenderPipelineState(currentPipeline->getPipelineState(effectiveMode));
 
-    // Bind vertex buffer at index 30
+    // Bind pipeline and upload uniforms (with deduplication)
+    bindPipelineAndUniforms(effectiveMode);
+
+    // Bind vertex buffer only if changed
     MTL::Buffer* vbuf = currentVertexBuffer->getBuffer();
-    if (vbuf) {
-        renderEncoder->setVertexBuffer(vbuf, 0, VERTEX_BUFFER_INDEX);
+    size_t vbufOffset = currentVertexBuffer->getOffset();
+    if (vbuf && (vbuf != lastBoundVBO || vbufOffset != lastBoundVBOOffset)) {
+        renderEncoder->setVertexBuffer(vbuf, vbufOffset, VERTEX_BUFFER_INDEX);
+        lastBoundVBO = vbuf;
+        lastBoundVBOOffset = vbufOffset;
     }
 
-    // Upload vertex uniforms (buffer 0)
-    const auto& vertUniforms = currentPipeline->getVertexUniformData();
-    if (!vertUniforms.empty()) {
-        renderEncoder->setVertexBytes(vertUniforms.data(), vertUniforms.size(), 0);
-    }
-
-    // Upload fragment uniforms (buffer 2)
-    const auto& fragUniforms = currentPipeline->getFragmentUniformData();
-    if (!fragUniforms.empty()) {
-        renderEncoder->setFragmentBytes(fragUniforms.data(), fragUniforms.size(), 2);
-    }
-
-    // Get index buffer
+    // Get index buffer (with ring buffer offset)
     MTL::Buffer* ibuf = currentIndexBuffer->getBuffer();
     if (!ibuf) {
         return;
     }
 
-    // Draw indexed
+    // Draw indexed (offset includes ring buffer base offset)
+    size_t indexByteOffset = currentIndexBuffer->getOffset() + startIndex * sizeof(uint32_t);
     renderEncoder->drawIndexedPrimitives(
         static_cast<MTL::PrimitiveType>(toMTLPrimitive(primitive)),
         indexCount,
         MTL::IndexTypeUInt32,
         ibuf,
-        startIndex * sizeof(uint32_t)
+        indexByteOffset
     );
 }
 
@@ -609,6 +641,50 @@ void MTLRenderDevice::setVsync(bool enabled) {
     if (metalLayer) {
         setMetalLayerVsync(metalLayer, enabled);
     }
+}
+
+void MTLRenderDevice::createStreamBuffers() {
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        streamBuffers[i] = device->newBuffer(STREAM_BUFFER_SIZE, MTL::ResourceStorageModeShared);
+    }
+}
+
+void MTLRenderDevice::destroyStreamBuffers() {
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        if (streamBuffers[i]) {
+            streamBuffers[i]->release();
+            streamBuffers[i] = nullptr;
+        }
+    }
+}
+
+StreamAllocation MTLRenderDevice::allocateStream(size_t sizeBytes) {
+    // Align to 256 bytes for optimal GPU access
+    size_t alignedSize = (sizeBytes + 255) & ~static_cast<size_t>(255);
+
+    MTL::Buffer* ringBuffer = streamBuffers[currentFrameIndex];
+    if (!ringBuffer || streamOffset + alignedSize > STREAM_BUFFER_SIZE) {
+        // Ring buffer exhausted — fall back to a one-off allocation
+        // This should be rare; if hit frequently, increase STREAM_BUFFER_SIZE
+        MTL::Buffer* fallback = device->newBuffer(sizeBytes, MTL::ResourceStorageModeShared);
+        return {fallback, 0, true};  // Caller owns this buffer
+    }
+
+    StreamAllocation alloc;
+    alloc.buffer = ringBuffer;
+    alloc.offset = streamOffset;
+    alloc.ownsBuffer = false;  // Ring buffer is owned by the device
+    streamOffset += alignedSize;
+    return alloc;
+}
+
+void MTLRenderDevice::resetEncoderState() {
+    lastBoundPipelineState = nullptr;
+    lastUniformPipeline = nullptr;
+    lastBoundVBO = nullptr;
+    lastBoundVBOOffset = SIZE_MAX;
+    lastBoundDepthStencil = nullptr;
+    lastBoundCullMode = -1;
 }
 
 int MTLRenderDevice::toMTLPrimitive(PrimitiveType prim) {

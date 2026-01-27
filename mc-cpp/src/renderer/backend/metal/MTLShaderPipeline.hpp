@@ -57,6 +57,12 @@ public:
     // Get default blend mode for this shader
     BlendMode getDefaultBlendMode() const { return defaultBlendMode; }
 
+    // Dirty tracking for uniforms (avoids redundant uploads)
+    bool isVertexUniformsDirty() const { return vertexUniformsDirty; }
+    bool isFragmentUniformsDirty() const { return fragmentUniformsDirty; }
+    void clearVertexUniformsDirty() { vertexUniformsDirty = false; }
+    void clearFragmentUniformsDirty() { fragmentUniformsDirty = false; }
+
 private:
     bool createPipelineStates();
     MTL::RenderPipelineState* createPipelineWithBlendMode(BlendMode mode);
@@ -85,6 +91,10 @@ private:
 
     // Default blend mode for this shader
     BlendMode defaultBlendMode = BlendMode::AlphaBlend;
+
+    // Dirty flags for uniform data (set on modification, cleared after upload)
+    bool vertexUniformsDirty = true;
+    bool fragmentUniformsDirty = true;
 };
 
 } // namespace mc
