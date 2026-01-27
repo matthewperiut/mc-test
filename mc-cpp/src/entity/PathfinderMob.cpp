@@ -15,9 +15,9 @@ PathfinderMob::PathfinderMob(Level* level)
 void PathfinderMob::pollAsyncPaths() {
     if (!level || !level->getAsyncPathFinder()) return;
 
-    auto results = level->getAsyncPathFinder()->getCompletedPaths();
+    auto results = level->getAsyncPathFinder()->getCompletedPaths(entityId);
     for (auto& result : results) {
-        if (result.entityId == entityId && result.requestId == pendingPathRequestId) {
+        if (result.requestId == pendingPathRequestId) {
             path = std::move(result.path);
             waitingForPath = false;
             pendingPathRequestId = -1;

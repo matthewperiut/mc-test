@@ -541,6 +541,7 @@ bool Level::mayPlace(int tileId, int x, int y, int z, bool ignoreBoundingBox) co
 }
 
 void Level::tick() {
+    worldTime+=50;
     ++collisionCacheFrameId;  // Invalidate old collision cache entries
     tickEntities();
     tickTiles();

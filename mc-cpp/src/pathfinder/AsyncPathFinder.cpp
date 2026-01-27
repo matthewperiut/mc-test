@@ -113,10 +113,18 @@ int AsyncPathFinder::queueRequest(Entity* entity, double targetX, double targetY
     return request.requestId;
 }
 
-std::vector<PathfindingResult> AsyncPathFinder::getCompletedPaths() {
+std::vector<PathfindingResult> AsyncPathFinder::getCompletedPaths(int entityId) {
     std::lock_guard<std::mutex> lock(completedMutex);
-    std::vector<PathfindingResult> results = std::move(completedPaths);
-    completedPaths.clear();
+    std::vector<PathfindingResult> results;
+    std::vector<PathfindingResult> remaining;
+    for (auto& r : completedPaths) {
+        if (r.entityId == entityId) {
+            results.push_back(std::move(r));
+        } else {
+            remaining.push_back(std::move(r));
+        }
+    }
+    completedPaths = std::move(remaining);
     return results;
 }
 

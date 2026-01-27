@@ -80,8 +80,8 @@ public:
     int queueRequest(Entity* entity, double targetX, double targetY, double targetZ,
                      float maxDist, Level* level);
 
-    // Poll for completed paths (call from main thread)
-    std::vector<PathfindingResult> getCompletedPaths();
+    // Poll for completed paths for a specific entity (call from main thread)
+    std::vector<PathfindingResult> getCompletedPaths(int entityId);
 
     // Cancel all pending requests for an entity
     void cancelRequests(int entityId);
